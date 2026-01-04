@@ -24,7 +24,7 @@ struct Tile {
         switch type {
         case .empty: return SKColor(white: 0.08, alpha: 1.0)
         case .wall: return SKColor(white: 0.25, alpha: 1.0)
-        case .crate: return SKColor.brown
+        case .crate: return SKColor(white: 0.18, alpha: 1.0)
         }
     }
 }
@@ -148,3 +148,4 @@ struct TileMap {
         return Array(result)
     }
 }
+

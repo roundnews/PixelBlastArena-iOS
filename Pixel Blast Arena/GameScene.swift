@@ -21,7 +21,14 @@ final class GameScene: SKScene {
 
     // Nodes
     private var explosionFrames: [SKTexture] = []
-    private var playerNode = SKSpriteNode(color: .green, size: CGSize(width: 28, height: 28))
+    private var playerNode = SKSpriteNode()
+
+    // Player animation frames
+    private var playerRightFrames: [SKTexture] = []
+    private var playerUpFrames: [SKTexture] = []
+    private var playerDownFrames: [SKTexture] = []
+    private var lastDirection: Direction = .down
+
     private var enemyNodes: [SKSpriteNode] = []
 
     private var escapeBombPosition: GridPoint?
@@ -34,19 +41,30 @@ final class GameScene: SKScene {
     // Timing
     private var lastUpdateTime: TimeInterval = 0
 
+    // Ensure scene setup runs only once per scene instance
+    private var didSetup: Bool = false
+
     // MARK: - Scene lifecycle
     override func didMove(to view: SKView) {
+        // Prevent double-initialization if the same scene instance is presented again
+        if didSetup {
+            // Still update camera reference just in case
+            camera = cameraNode
+            return
+        }
+        didSetup = true
+
         backgroundColor = .black
         tileSize = computedTileSize(for: size)
         loadExplosionFrames()
+        loadPlayerFrames()
 
-        addChild(worldNode)
+        if worldNode.parent == nil { addChild(worldNode) }
         buildMap()
         spawnPlayer()
         spawnEnemies(count: 3)
 
-        // Camera
-        addChild(cameraNode)
+        if cameraNode.parent == nil { addChild(cameraNode) }
         camera = cameraNode
         updateCamera()
         onHUDUpdate?(enemies.count, level)
@@ -61,25 +79,59 @@ final class GameScene: SKScene {
 
     private func renderTiles() {
         guard let map = tileMap else { return }
-        // Render tiles as colored squares
+        // Render tiles as colored squares or textures for wall/crate
         for r in 0..<rows {
             for c in 0..<cols {
                 let tile = map.tileAt(col: c, row: r)
-                let node = SKSpriteNode(color: tile.skColor, size: CGSize(width: tileSize, height: tileSize))
+                // Always create a base colored tile; for crates, use the navigable (empty) tile color behind the texture
+                let baseColor: SKColor = (tile.type == .crate) ? Tile(type: .empty).skColor : tile.skColor
+                let node = SKSpriteNode(color: baseColor, size: CGSize(width: tileSize, height: tileSize))
                 node.position = positionFor(col: c, row: r)
                 node.zPosition = 0
                 node.name = "tile_\(c)_\(r)"
-                // Removed node.isAntialiased = false as per instructions
                 worldNode.addChild(node)
+
+                // If this tile is a crate, add a crate overlay texture above the base tile to avoid showing scene background through transparent pixels
+                if tile.type == .crate {
+                    let tex = SKTexture(imageNamed: "brick")
+                    tex.filteringMode = .nearest
+                    let overlay = SKSpriteNode(texture: tex, size: CGSize(width: tileSize * 1.8, height: tileSize * 1.8))
+                    overlay.position = node.position
+                    overlay.zPosition = 1
+                    overlay.name = "crateOverlay_\(c)_\(r)"
+                    worldNode.addChild(overlay)
+                }
             }
         }
     }
 
     private func refreshTile(at col: Int, row: Int) {
-        let name = "tile_\(col)_\(row)"
-        if let node = worldNode.childNode(withName: name) as? SKSpriteNode {
+        let baseName = "tile_\(col)_\(row)"
+        if let node = worldNode.childNode(withName: baseName) as? SKSpriteNode {
             let tile = tileMap.tileAt(col: col, row: row)
-            node.color = tile.skColor
+            // Always ensure base colored tile is correct; for crates, use the navigable (empty) tile color behind the texture
+            let baseColor: SKColor = (tile.type == .crate) ? Tile(type: .empty).skColor : tile.skColor
+            node.texture = nil
+            node.color = baseColor
+            node.size = CGSize(width: tileSize, height: tileSize)
+
+            // Manage crate overlay separately
+            let overlayName = "crateOverlay_\(col)_\(row)"
+            if tile.type == .crate {
+                if worldNode.childNode(withName: overlayName) == nil {
+                    let tex = SKTexture(imageNamed: "brick")
+                    tex.filteringMode = .nearest
+                    let overlay = SKSpriteNode(texture: tex, size: CGSize(width: tileSize * 1.8, height: tileSize * 1.8))
+                    overlay.position = node.position
+                    overlay.zPosition = 1
+                    overlay.name = overlayName
+                    worldNode.addChild(overlay)
+                }
+            } else {
+                if let overlay = worldNode.childNode(withName: overlayName) as? SKSpriteNode {
+                    overlay.removeFromParent()
+                }
+            }
         }
     }
 
@@ -92,9 +144,12 @@ final class GameScene: SKScene {
     // MARK: - Player
     private func spawnPlayer() {
         player.gridPosition = GridPoint(col: 1, row: 1)
-        playerNode.size = CGSize(width: tileSize * 0.9, height: tileSize * 0.9)
+        let initialTexture = playerDownFrames.first ?? playerRightFrames.first
+        playerNode = SKSpriteNode(texture: initialTexture)
+        playerNode.size = CGSize(width: tileSize * 1.4, height: tileSize * 1.4)
         playerNode.position = positionFor(col: player.gridPosition.col, row: player.gridPosition.row)
         playerNode.zPosition = 10
+        playerNode.xScale = 1.0
         worldNode.addChild(playerNode)
     }
 
@@ -122,6 +177,9 @@ final class GameScene: SKScene {
 
         guard canMove else { return }
 
+        // Insert capturing previous grid position before update
+        let previous = player.gridPosition
+
         // Update grid state first
         player.gridPosition = target
         escapeBombPosition = nil
@@ -130,12 +188,70 @@ final class GameScene: SKScene {
         // Apply movement immediately to avoid any action conflicts
         playerNode.removeAction(forKey: "move")
         playerNode.position = newPos
+
+        // Determine direction from delta and animate frames
+        let dx = target.col - previous.col
+        let dy = target.row - previous.row
+        if abs(dx) > 0 || abs(dy) > 0 {
+            if abs(dx) > abs(dy) {
+                // Horizontal movement
+                if dx > 0 {
+                    animatePlayer(direction: .right)
+                } else {
+                    animatePlayer(direction: .left)
+                }
+            } else {
+                // Vertical movement
+                if dy > 0 {
+                    animatePlayer(direction: .up)
+                } else {
+                    animatePlayer(direction: .down)
+                }
+            }
+        }
+
         // Small feedback pulse
         let pulse = SKAction.sequence([
             SKAction.scale(to: 0.96, duration: 0.05),
             SKAction.scale(to: 1.0, duration: 0.05)
         ])
         playerNode.run(pulse, withKey: "move")
+    }
+
+    private func animatePlayer(direction: Direction) {
+        lastDirection = direction
+        playerNode.removeAction(forKey: "walk")
+
+        switch direction {
+        case .right:
+            playerNode.xScale = 1.0
+            if !playerRightFrames.isEmpty {
+                let action = SKAction.animate(with: playerRightFrames, timePerFrame: 0.1, resize: false, restore: false)
+                playerNode.run(action, withKey: "walk")
+                playerNode.texture = playerRightFrames.last
+            }
+        case .left:
+            playerNode.xScale = -1.0
+            if !playerRightFrames.isEmpty {
+                let action = SKAction.animate(with: playerRightFrames, timePerFrame: 0.1, resize: false, restore: false)
+                playerNode.run(action, withKey: "walk")
+                playerNode.texture = playerRightFrames.last
+            }
+        case .up:
+            playerNode.xScale = 1.0
+            if !playerUpFrames.isEmpty {
+                let action = SKAction.animate(with: playerUpFrames, timePerFrame: 0.1, resize: false, restore: false)
+                playerNode.run(action, withKey: "walk")
+                playerNode.texture = playerUpFrames.last
+            }
+        case .down:
+            playerNode.xScale = 1.0
+            if !playerDownFrames.isEmpty {
+                let action = SKAction.animate(with: playerDownFrames, timePerFrame: 0.1, resize: false, restore: false)
+                playerNode.run(action, withKey: "walk")
+                playerNode.texture = playerDownFrames.last
+            }
+        }
     }
 
     // MARK: - Bombs
@@ -145,7 +261,9 @@ final class GameScene: SKScene {
         let bomb = Bomb(position: gp)
         tileMap.place(bomb: bomb)
 
-        let bombNode = SKSpriteNode(color: .orange, size: CGSize(width: tileSize*0.8, height: tileSize*0.8))
+        let tex = SKTexture(imageNamed: "bomb")
+        tex.filteringMode = .nearest
+        let bombNode = SKSpriteNode(texture: tex, size: CGSize(width: tileSize * 1.7, height: tileSize * 1.7))
         bombNode.position = positionFor(col: gp.col, row: gp.row)
         bombNode.zPosition = 5
         bombNode.name = "bomb_\(gp.col)_\(gp.row)"
@@ -210,7 +328,6 @@ final class GameScene: SKScene {
             node.position = positionFor(col: gp.col, row: gp.row)
             node.zPosition = 8
             worldNode.addChild(node)
-            // Removed node.isAntialiased = false as per instructions
 
             let animate = SKAction.animate(with: explosionFrames, timePerFrame: 0.06, resize: false, restore: false)
             node.run(.sequence([animate, .removeFromParent()]))
@@ -222,7 +339,6 @@ final class GameScene: SKScene {
         node.position = positionFor(col: gp.col, row: gp.row)
         node.zPosition = 8
         worldNode.addChild(node)
-        // Removed node.isAntialiased = false as per instructions
 
         let appear = SKAction.group([
             SKAction.fadeAlpha(to: 0.95, duration: 0.05),
@@ -352,15 +468,7 @@ final class GameScene: SKScene {
         onPauseChanged?(true)
         isPaused = true
         isGamePaused = true
-        // Simple overlay as label node for now
-        let text = youWin ? "YOU WIN" : "GAME OVER"
-        let label = SKLabelNode(text: text)
-        label.fontName = ".AppleSystemUIFontBold"
-        label.fontSize = 48
-        label.fontColor = .white
-        label.zPosition = 100
-        label.position = CGPoint(x: cameraNode.position.x, y: cameraNode.position.y)
-        addChild(label)
+        // Removed the block that creates and adds a game over label as per instructions
     }
 
     private func computedTileSize(for viewSize: CGSize) -> CGFloat {
@@ -384,7 +492,7 @@ final class GameScene: SKScene {
         renderTiles()
 
         // Re-add player
-        playerNode.size = CGSize(width: tileSize * 0.9, height: tileSize * 0.9)
+        playerNode.size = CGSize(width: tileSize * 1.4, height: tileSize * 1.4)
         playerNode.position = positionFor(col: player.gridPosition.col, row: player.gridPosition.row)
         playerNode.zPosition = 10
         worldNode.addChild(playerNode)
@@ -419,7 +527,67 @@ final class GameScene: SKScene {
         explosionFrames = frames
     }
 
+    private func loadPlayerFrames() {
+        playerRightFrames.removeAll()
+        playerUpFrames.removeAll()
+        playerDownFrames.removeAll()
+
+        // Helper to slice a 4-frame horizontal strip with given top/bottom pixel margins
+        func sliceFrames(from baseName: String, topMarginPx: CGFloat, bottomMarginPx: CGFloat) -> [SKTexture] {
+            var frames: [SKTexture] = []
+            #if canImport(UIKit)
+            if let img = UIImage(named: baseName) {
+                let pixelHeight = img.size.height * img.scale
+                let topFrac = max(0, min(1, topMarginPx / pixelHeight))
+                let bottomFrac = max(0, min(1, bottomMarginPx / pixelHeight))
+                let frameHeight = max(0, 1 - topFrac - bottomFrac)
+                let baseTex = SKTexture(imageNamed: baseName)
+                baseTex.filteringMode = .nearest
+                for i in 0..<4 {
+                    let x = CGFloat(i) * 0.25
+                    let rect = CGRect(x: x, y: bottomFrac, width: 0.25, height: frameHeight)
+                    let tex = SKTexture(rect: rect, in: baseTex)
+                    tex.filteringMode = .nearest
+                    frames.append(tex)
+                }
+            }
+            #else
+            let baseTex = SKTexture(imageNamed: baseName)
+            baseTex.filteringMode = .nearest
+            for i in 0..<4 {
+                let x = CGFloat(i) * 0.25
+                let rect = CGRect(x: x, y: 0.0, width: 0.25, height: 1.0)
+                let tex = SKTexture(rect: rect, in: baseTex)
+                tex.filteringMode = .nearest
+                frames.append(tex)
+            }
+            #endif
+            return frames
+        }
+
+        // Load right/left frames and up/down frames
+        let rightStrip = sliceFrames(from: "left-right", topMarginPx: 300, bottomMarginPx: 200)
+        if !rightStrip.isEmpty { playerRightFrames = rightStrip }
+
+        let upDownStrip = sliceFrames(from: "up-down", topMarginPx: 300, bottomMarginPx: 200)
+        if upDownStrip.count == 4 {
+            playerUpFrames = Array(upDownStrip[0...1])
+            playerDownFrames = Array(upDownStrip[2...3])
+        }
+    }
+
     func restart() {
+        // Clean up any lingering game-over labels from prior sessions
+        self.enumerateChildNodes(withName: "gameOverLabel") { node, _ in
+            node.removeFromParent()
+        }
+        // Defensive: remove any SKLabelNode with typical game-over texts
+        for child in self.children {
+            if let label = child as? SKLabelNode, let text = label.text?.uppercased(), (text.contains("GAME OVER") || text.contains("YOU WIN")) {
+                label.removeFromParent()
+            }
+        }
+
         isPaused = false
         isGamePaused = false
         onPauseChanged?(false)

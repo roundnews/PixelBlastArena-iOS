@@ -36,9 +36,11 @@ struct ArcadeTitle: View {
                 .overlay(
                     Text(text)
                         .font(.system(size: 64, weight: .heavy, design: .rounded))
-                        .stroke(highlight.opacity(0.9), lineWidth: 3)
+                        .foregroundStyle(highlight.opacity(0.95))
+                        .shadow(color: highlight.opacity(0.7), radius: 2, x: 0, y: 0)
+                        .shadow(color: highlight.opacity(0.5), radius: 3, x: 0, y: 0)
                         .blur(radius: 0.2)
-                        .opacity(0.8)
+                        .opacity(0.9)
                 )
 
             // 4) Drop shadow for depth

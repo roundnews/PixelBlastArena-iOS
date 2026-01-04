@@ -4,18 +4,35 @@ struct MainMenuView: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
+            GeometryReader { proxy in
+                let size = proxy.size
+                let isLandscape = size.width > size.height
+                let imageName = isLandscape ? "bg-landscape" : "bg-portrait"
+
+                Color.clear
+                    .ignoresSafeArea()
+                    .overlay(
+                        Image(imageName),
+                        alignment: .center
+                    )
+                    .clipped()
+            }
 
             VStack(spacing: 24) {
                 Spacer()
 
-                Text("Pixel Blast Arena")
-                    .font(.largeTitle).bold()
-                    .foregroundStyle(.white)
+                ArcadeTitle()
                     .padding(.horizontal)
 
                 Text("Retro bomb-blasting fun!")
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.8))
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color.black.opacity(0.85))
+                    )
 
                 Spacer()
 
@@ -35,6 +52,7 @@ struct MainMenuView: View {
             }
             .padding()
         }
+        .ignoresSafeArea()
         .toolbar(.hidden, for: .navigationBar)
     }
 }

@@ -60,6 +60,7 @@ struct GameView: View {
                     }
                 }
                 .padding([.top, .horizontal])
+                .padding(.top, 20)
 
                 Spacer()
 
@@ -149,8 +150,10 @@ struct DPadView: View {
             Button { onTap(.down) } label: { dpadButton(system: "chevron.down") }
         }
         .padding(8)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.black.opacity(0.2))
+        )
         .padding(.leading)
     }
 
@@ -170,7 +173,7 @@ struct PauseOverlay: View {
     var restart: () -> Void
     var body: some View {
         ZStack {
-            Color.black.opacity(0.5).ignoresSafeArea()
+            Color.black.opacity(0.25).ignoresSafeArea()
             VStack(spacing: 16) {
                 Text("Paused").font(.title).bold().foregroundStyle(.white)
                 HStack(spacing: 16) {
@@ -197,7 +200,7 @@ struct GameOverOverlay: View {
     var restart: () -> Void
     var body: some View {
         ZStack {
-            Color.black.opacity(0.6).ignoresSafeArea()
+            Color.black.opacity(0.3).ignoresSafeArea()
             VStack(spacing: 16) {
                 Text(didWin ? "You Win!" : "Game Over").font(.largeTitle).bold().foregroundStyle(.white)
                 Button("Restart", action: restart)
