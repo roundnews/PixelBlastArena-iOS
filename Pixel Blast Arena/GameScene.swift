@@ -86,6 +86,7 @@ final class GameScene: SKScene {
         loadPlayerFrames()
         loadMonsterFrames()
         loadPortalFrames()
+        loadPowerupFrames()
 
         if worldNode.parent == nil { addChild(worldNode) }
         buildMap()
@@ -850,6 +851,23 @@ final class GameScene: SKScene {
                 frames.append(tex)
             }
             portalFrames = frames
+        }
+    }
+
+    private func loadPowerupFrames() {
+        powerupFrames.removeAll()
+        let baseTex = SKTexture(imageNamed: "powerup")
+        if baseTex.size() != .zero {
+            baseTex.filteringMode = .nearest
+            var frames: [SKTexture] = []
+            for i in 0..<4 {
+                let x = CGFloat(i) * 0.25
+                let rect = CGRect(x: x, y: 0.0, width: 0.25, height: 1.0)
+                let tex = SKTexture(rect: rect, in: baseTex)
+                tex.filteringMode = .nearest
+                frames.append(tex)
+            }
+            powerupFrames = frames
         }
     }
 
