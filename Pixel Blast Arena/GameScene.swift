@@ -512,10 +512,22 @@ final class GameScene: SKScene {
 
         var spawned = 0
         var attempts = 0
-        while spawned < count && attempts < 200 {
+        let playerStart = GridPoint(col: 1, row: 1)
+        let minManhattanDistance = 6
+        let bottomSafeMarginRows = 3 // rows 1..3 are considered a safe margin
+
+        while spawned < count && attempts < 400 {
             attempts += 1
             let col = Int.random(in: 3..<(cols-2))
             let row = Int.random(in: 3..<(rows-2))
+
+            // Enforce bottom safe margin: avoid spawning in the bottom N inner rows
+            if row <= bottomSafeMarginRows { continue }
+
+            // Enforce minimum Manhattan distance from player start
+            let dist = abs(col - playerStart.col) + abs(row - playerStart.row)
+            if dist < minManhattanDistance { continue }
+
             if tileMap.isWalkable(col: col, row: row) {
                 var e = Enemy()
                 e.gridPosition = GridPoint(col: col, row: row)
@@ -524,7 +536,7 @@ final class GameScene: SKScene {
                 let node: SKSpriteNode
                 if let tex = initialTexture {
                     node = SKSpriteNode(texture: tex)
-                    node.size = CGSize(width: tileSize * 1.6, height: tileSize * 1.6)
+                    node.size = CGSize(width: tileSize * 1.8, height: tileSize * 1.8)
                     animateEnemy(node: node, direction: .down)
                 } else {
                     node = SKSpriteNode(color: .red, size: CGSize(width: tileSize*0.8, height: tileSize*0.8))
@@ -542,38 +554,93 @@ final class GameScene: SKScene {
         // Random stepping every 0.3s approx
         for (i, var enemy) in enemies.enumerated() {
             enemy.timeSinceLastMove += deltaTime
+            var didMoveThisTick = false
+
             if enemy.timeSinceLastMove > 0.3 {
                 enemy.timeSinceLastMove = 0
+
+                // Candidate directions (right, left, up, down as grid deltas)
                 let dirs: [GridPoint] = [
                     GridPoint(col: 1, row: 0), GridPoint(col: -1, row: 0),
                     GridPoint(col: 0, row: 1), GridPoint(col: 0, row: -1)
                 ]
+
+                // First pass: random order try
                 let shuffled = dirs.shuffled()
                 for d in shuffled {
                     let target = GridPoint(col: enemy.gridPosition.col + d.col, row: enemy.gridPosition.row + d.row)
                     if tileMap.isWalkable(col: target.col, row: target.row) {
                         let prev = enemy.gridPosition
                         enemy.gridPosition = target
-                        enemies[i] = enemy
+                        didMoveThisTick = true
+                        enemy.failedMoveAttempts = 0
+
                         if let node = enemyNodes[safe: i] {
                             let pos = positionFor(col: target.col, row: target.row)
                             let dx = target.col - prev.col
                             let dy = target.row - prev.row
-                            let dir: Direction
-                            if abs(dx) > abs(dy) {
-                                dir = dx > 0 ? .right : .left
-                            } else {
-                                dir = dy > 0 ? .up : .down
-                            }
+                            let dir: Direction = (abs(dx) > abs(dy)) ? (dx > 0 ? .right : .left) : (dy > 0 ? .up : .down)
                             animateEnemy(node: node, direction: dir)
-                            node.run(SKAction.move(to: pos, duration: 0.16))
+                            node.run(SKAction.move(to: pos, duration: 0.16)) {
+                                node.position = pos // snap to grid center to avoid drift
+                            }
                         }
                         break
                     }
                 }
-            } else {
-                enemies[i] = enemy
+
+                // Fallback pass: if still stuck after several failures, bias toward open space
+                if !didMoveThisTick {
+                    enemy.failedMoveAttempts += 1
+                    if enemy.failedMoveAttempts >= 5 {
+                        // Score each direction by openness up to 3 tiles ahead
+                        func opennessScore(for d: GridPoint) -> Int {
+                            var score = 0
+                            var step = 1
+                            while step <= 3 {
+                                let c = enemy.gridPosition.col + d.col * step
+                                let r = enemy.gridPosition.row + d.row * step
+                                if !tileMap.inBounds(col: c, row: r) { break }
+                                if tileMap.hasBomb(at: GridPoint(col: c, row: r)) { break }
+                                let t = tileMap.tileAt(col: c, row: r).type
+                                if t != .empty { break }
+                                score += 1
+                                step += 1
+                            }
+                            return score
+                        }
+
+                        let scored = dirs.map { (dir: $0, score: opennessScore(for: $0)) }
+                            .sorted { $0.score > $1.score }
+
+                        for item in scored {
+                            // Skip directions with zero openness to avoid headbutting a wall
+                            if item.score == 0 { continue }
+                            let target = GridPoint(col: enemy.gridPosition.col + item.dir.col, row: enemy.gridPosition.row + item.dir.row)
+                            if tileMap.isWalkable(col: target.col, row: target.row) {
+                                let prev = enemy.gridPosition
+                                enemy.gridPosition = target
+                                didMoveThisTick = true
+                                enemy.failedMoveAttempts = 0
+
+                                if let node = enemyNodes[safe: i] {
+                                    let pos = positionFor(col: target.col, row: target.row)
+                                    let dx = target.col - prev.col
+                                    let dy = target.row - prev.row
+                                    let dir: Direction = (abs(dx) > abs(dy)) ? (dx > 0 ? .right : .left) : (dy > 0 ? .up : .down)
+                                    animateEnemy(node: node, direction: dir)
+                                    node.run(SKAction.move(to: pos, duration: 0.16)) {
+                                        node.position = pos // snap to grid center to avoid drift
+                                    }
+                                }
+                                break
+                            }
+                        }
+                    }
+                }
             }
+
+            enemies[i] = enemy
         }
 
         // Player collision
@@ -703,7 +770,7 @@ final class GameScene: SKScene {
             let node: SKSpriteNode
             if let tex = initialTexture {
                 node = SKSpriteNode(texture: tex)
-                node.size = CGSize(width: tileSize * 1.6, height: tileSize * 1.6)
+                node.size = CGSize(width: tileSize * 1.8, height: tileSize * 1.8)
             } else {
                 node = SKSpriteNode(color: .red, size: CGSize(width: tileSize*0.8, height: tileSize*0.8))
             }
