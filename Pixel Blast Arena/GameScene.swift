@@ -229,7 +229,7 @@ final class GameScene: SKScene {
     private func movePlayer(to target: GridPoint) {
         // Primary rule: normal walkability check allowing stepping off a placed bomb
         var canMove = tileMap.isWalkableForPlayer(from: player.gridPosition, to: target)
-        if !canMove, activePowerup == .passThrough {
+        if !canMove, (activePowerup == .passThrough || isInvincible) {
             // Allow movement onto crates while pass-through is active (but not walls or bombs)
             if tileMap.inBounds(col: target.col, row: target.row) {
                 let t = tileMap.tileAt(col: target.col, row: target.row).type
