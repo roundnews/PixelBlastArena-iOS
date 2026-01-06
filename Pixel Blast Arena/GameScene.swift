@@ -29,6 +29,10 @@ final class GameScene: SKScene {
     private var playerDownFrames: [SKTexture] = []
     private var lastDirection: Direction = .down
 
+    private var monsterRightFrames: [SKTexture] = []
+    private var monsterUpFrames: [SKTexture] = []
+    private var monsterDownFrames: [SKTexture] = []
+
     private var enemyNodes: [SKSpriteNode] = []
 
     private var escapeBombPosition: GridPoint?
@@ -58,6 +62,7 @@ final class GameScene: SKScene {
         tileSize = computedTileSize(for: size)
         loadExplosionFrames()
         loadPlayerFrames()
+        loadMonsterFrames()
 
         if worldNode.parent == nil { addChild(worldNode) }
         buildMap()
@@ -254,6 +259,40 @@ final class GameScene: SKScene {
         }
     }
 
+    private func animateEnemy(node: SKSpriteNode, direction: Direction) {
+        node.removeAction(forKey: "enemyWalk")
+        switch direction {
+        case .right:
+            node.xScale = 1.0
+            if !monsterRightFrames.isEmpty {
+                let action = SKAction.animate(with: monsterRightFrames, timePerFrame: 0.12, resize: false, restore: false)
+                node.run(action, withKey: "enemyWalk")
+                node.texture = monsterRightFrames.last
+            }
+        case .left:
+            node.xScale = -1.0
+            if !monsterRightFrames.isEmpty {
+                let action = SKAction.animate(with: monsterRightFrames, timePerFrame: 0.12, resize: false, restore: false)
+                node.run(action, withKey: "enemyWalk")
+                node.texture = monsterRightFrames.last
+            }
+        case .up:
+            node.xScale = 1.0
+            if !monsterUpFrames.isEmpty {
+                let action = SKAction.animate(with: monsterUpFrames, timePerFrame: 0.12, resize: false, restore: false)
+                node.run(action, withKey: "enemyWalk")
+                node.texture = monsterUpFrames.last
+            }
+        case .down:
+            node.xScale = 1.0
+            if !monsterDownFrames.isEmpty {
+                let action = SKAction.animate(with: monsterDownFrames, timePerFrame: 0.12, resize: false, restore: false)
+                node.run(action, withKey: "enemyWalk")
+                node.texture = monsterDownFrames.last
+            }
+        }
+    }
+
     // MARK: - Bombs
     func placeBomb() {
         let gp = player.gridPosition
@@ -368,7 +407,15 @@ final class GameScene: SKScene {
                 var e = Enemy()
                 e.gridPosition = GridPoint(col: col, row: row)
                 enemies.append(e)
-                let node = SKSpriteNode(color: .red, size: CGSize(width: tileSize*0.8, height: tileSize*0.8))
+                let initialTexture = monsterDownFrames.first ?? monsterRightFrames.first
+                let node: SKSpriteNode
+                if let tex = initialTexture {
+                    node = SKSpriteNode(texture: tex)
+                    node.size = CGSize(width: tileSize * 1.6, height: tileSize * 1.6)
+                    animateEnemy(node: node, direction: .down)
+                } else {
+                    node = SKSpriteNode(color: .red, size: CGSize(width: tileSize*0.8, height: tileSize*0.8))
+                }
                 node.position = positionFor(col: col, row: row)
                 node.zPosition = 9
                 enemyNodes.append(node)
@@ -392,10 +439,20 @@ final class GameScene: SKScene {
                 for d in shuffled {
                     let target = GridPoint(col: enemy.gridPosition.col + d.col, row: enemy.gridPosition.row + d.row)
                     if tileMap.isWalkable(col: target.col, row: target.row) {
+                        let prev = enemy.gridPosition
                         enemy.gridPosition = target
                         enemies[i] = enemy
                         if let node = enemyNodes[safe: i] {
                             let pos = positionFor(col: target.col, row: target.row)
+                            let dx = target.col - prev.col
+                            let dy = target.row - prev.row
+                            let dir: Direction
+                            if abs(dx) > abs(dy) {
+                                dir = dx > 0 ? .right : .left
+                            } else {
+                                dir = dy > 0 ? .up : .down
+                            }
+                            animateEnemy(node: node, direction: dir)
                             node.run(SKAction.move(to: pos, duration: 0.16))
                         }
                         break
@@ -500,7 +557,14 @@ final class GameScene: SKScene {
         // Re-add enemies
         enemyNodes.removeAll()
         for e in enemies {
-            let node = SKSpriteNode(color: .red, size: CGSize(width: tileSize*0.8, height: tileSize*0.8))
+            let initialTexture = monsterDownFrames.first ?? monsterRightFrames.first
+            let node: SKSpriteNode
+            if let tex = initialTexture {
+                node = SKSpriteNode(texture: tex)
+                node.size = CGSize(width: tileSize * 1.6, height: tileSize * 1.6)
+            } else {
+                node = SKSpriteNode(color: .red, size: CGSize(width: tileSize*0.8, height: tileSize*0.8))
+            }
             node.position = positionFor(col: e.gridPosition.col, row: e.gridPosition.row)
             node.zPosition = 9
             enemyNodes.append(node)
@@ -573,6 +637,38 @@ final class GameScene: SKScene {
         if upDownStrip.count == 4 {
             playerUpFrames = Array(upDownStrip[0...1])
             playerDownFrames = Array(upDownStrip[2...3])
+        }
+    }
+
+    private func loadMonsterFrames() {
+        monsterRightFrames.removeAll()
+        monsterUpFrames.removeAll()
+        monsterDownFrames.removeAll()
+
+        func slice4(from baseName: String) -> [SKTexture] {
+            var frames: [SKTexture] = []
+            let baseTex = SKTexture(imageNamed: baseName)
+            if baseTex.size() != .zero {
+                baseTex.filteringMode = .nearest
+                for i in 0..<4 {
+                    let x = CGFloat(i) * 0.25
+                    let rect = CGRect(x: x, y: 0.0, width: 0.25, height: 1.0)
+                    let tex = SKTexture(rect: rect, in: baseTex)
+                    tex.filteringMode = .nearest
+                    frames.append(tex)
+                }
+            }
+            return frames
+        }
+
+        // Load right/left frames and up/down frames for monsters
+        let rightStrip = slice4(from: "monster-left-right")
+        if !rightStrip.isEmpty { monsterRightFrames = rightStrip }
+
+        let upDownStrip = slice4(from: "monster-up-down")
+        if upDownStrip.count == 4 {
+            monsterUpFrames = Array(upDownStrip[0...1])
+            monsterDownFrames = Array(upDownStrip[2...3])
         }
     }
 
