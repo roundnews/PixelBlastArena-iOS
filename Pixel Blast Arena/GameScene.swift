@@ -408,6 +408,9 @@ final class GameScene: SKScene {
         escapeBombPosition = gp
         escapeWindowDeadline = CACurrentMediaTime() + 1.0
 
+        // SFX: bomb placed
+        AudioManager.shared.playSFX(named: "bomb-place")
+
         // Simple countdown animation
         let pulse = SKAction.sequence([
             SKAction.scale(to: 1.1, duration: 0.2),
@@ -423,6 +426,9 @@ final class GameScene: SKScene {
         bombNode.removeFromParent()
         tileMap.removeBomb(at: bomb.position)
         currentBombsCount = max(0, currentBombsCount - 1)
+
+        // SFX: bomb explode
+        AudioManager.shared.playSFX(named: "bomb-explode")
 
         let affected = tileMap.explosionTiles(from: bomb.position, range: bomb.range)
         // Spawn explosion tiles

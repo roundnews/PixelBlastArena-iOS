@@ -4,11 +4,15 @@ import AVFoundation
 import UIKit
 #endif
 
-final class AudioManager {
+final class AudioManager: NSObject {
     static let shared = AudioManager()
     private var bgmPlayer: AVAudioPlayer?
+    private var sfxPlayers: [AVAudioPlayer] = []
+    private var duckingCount: Int = 0
+    private var bgmNormalVolume: Float = 0.8
+    private var bgmDuckedVolume: Float = 0.35
 
-    private init() {}
+    private override init() { super.init() }
 
     func playBGM() {
         // If already playing, do nothing
@@ -50,7 +54,9 @@ final class AudioManager {
         }
 
         p.numberOfLoops = -1 // loop indefinitely
-        p.volume = 0.8
+        bgmNormalVolume = 0.8
+        // If currently ducking (due to active SFX), start at ducked volume
+        p.volume = (duckingCount > 0) ? bgmDuckedVolume : bgmNormalVolume
         p.prepareToPlay()
         p.play()
         bgmPlayer = p
@@ -76,4 +82,62 @@ final class AudioManager {
             // Non-fatal
         }
     }
+    
+    func playSFX(named name: String, volume: Float = 1.0) {
+        var player: AVAudioPlayer?
+        #if canImport(UIKit)
+        if let dataAsset = NSDataAsset(name: name) {
+            do {
+                player = try AVAudioPlayer(data: dataAsset.data)
+            } catch {
+                print("AudioManager: Failed to create SFX player from data asset \(name): \(error)")
+            }
+        }
+        #endif
+        if player == nil, let url = Bundle.main.url(forResource: name, withExtension: "mp3") {
+            do {
+                player = try AVAudioPlayer(contentsOf: url)
+            } catch {
+                print("AudioManager: Failed to create SFX player from file \(name): \(error)")
+            }
+        }
+        guard let p = player else {
+            print("AudioManager: SFX asset not found: \(name)")
+            return
+        }
+        p.volume = max(0.0, min(1.0, volume))
+        p.delegate = self
+        p.prepareToPlay()
+
+        // Begin ducking background music while this SFX plays
+        beginDuckingForSFX()
+
+        p.play()
+        sfxPlayers.append(p)
+    }
+    
+    private func beginDuckingForSFX() {
+        guard let bgm = bgmPlayer else { return }
+        duckingCount += 1
+        if duckingCount == 1 {
+            bgm.setVolume(bgmDuckedVolume, fadeDuration: 0.05)
+        }
+    }
+
+    private func endDuckingForSFX() {
+        duckingCount = max(0, duckingCount - 1)
+        guard let bgm = bgmPlayer else { return }
+        if duckingCount == 0 {
+            bgm.setVolume(bgmNormalVolume, fadeDuration: 0.1)
+        }
+    }
 }
+extension AudioManager: AVAudioPlayerDelegate {
+    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        endDuckingForSFX()
+        if let idx = sfxPlayers.firstIndex(where: { $0 === player }) {
+            sfxPlayers.remove(at: idx)
+        }
+    }
+}
+
