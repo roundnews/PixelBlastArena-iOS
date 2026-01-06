@@ -487,6 +487,9 @@ final class GameScene: SKScene {
                 if let node = enemyNodes[safe: idx] {
                     node.removeFromParent()
                 }
+                if enemyNodes.indices.contains(idx) {
+                    enemyNodes.remove(at: idx)
+                }
                 enemies.remove(at: idx)
             }
         }
@@ -717,7 +720,9 @@ final class GameScene: SKScene {
                 }
             }
 
-            enemies[i] = enemy
+            if i < enemies.count {
+                enemies[i] = enemy
+            }
         }
 
         // Player collision (unless invincible)
