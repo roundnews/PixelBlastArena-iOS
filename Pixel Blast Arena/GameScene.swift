@@ -1,6 +1,14 @@
 import SpriteKit
 import SwiftUI
 
+enum PowerupType: CaseIterable, Equatable {
+    case powerBomb
+    case speedIncrease
+    case speedDecrease
+    case passThrough
+    case moreBombs
+}
+
 final class GameScene: SKScene {
     // Grid/world
     private let cols = 26
@@ -32,15 +40,24 @@ final class GameScene: SKScene {
     private var monsterRightFrames: [SKTexture] = []
     private var monsterUpFrames: [SKTexture] = []
     private var monsterDownFrames: [SKTexture] = []
+    private var powerupFrames: [SKTexture] = []
 
     private var enemyNodes: [SKSpriteNode] = []
+    private var powerups: [GridPoint: PowerupType] = [:]
+    private var powerupNodes: [GridPoint: SKSpriteNode] = [:]
+    private var activePowerup: PowerupType? = nil
+    private var pendingPassThroughExpiry: Bool = false
+    private var maxConcurrentBombs: Int = 1
 
+    private var currentBombsCount: Int = 0
+    // Allow the player to step off a freshly placed bomb for a brief window
     private var escapeBombPosition: GridPoint?
-    private var escapeWindowDeadline: TimeInterval = 0
+    private var escapeWindowDeadline: CFTimeInterval = 0
 
     var onPauseChanged: ((Bool) -> Void)?
     var onHUDUpdate: ((Int, Int) -> Void)?
     var onGameOver: ((Bool) -> Void)?
+    var onPowerupCollected: ((PowerupType) -> Void)?
 
     // Timing
     private var lastUpdateTime: TimeInterval = 0
@@ -63,6 +80,7 @@ final class GameScene: SKScene {
         loadExplosionFrames()
         loadPlayerFrames()
         loadMonsterFrames()
+        loadPowerupFrames()
 
         if worldNode.parent == nil { addChild(worldNode) }
         buildMap()
@@ -173,6 +191,13 @@ final class GameScene: SKScene {
     private func movePlayer(to target: GridPoint) {
         // Primary rule: normal walkability check allowing stepping off a placed bomb
         var canMove = tileMap.isWalkableForPlayer(from: player.gridPosition, to: target)
+        if !canMove, activePowerup == .passThrough {
+            // Allow movement onto crates while pass-through is active (but not walls or bombs)
+            if tileMap.inBounds(col: target.col, row: target.row) {
+                let t = tileMap.tileAt(col: target.col, row: target.row).type
+                if t != .wall && !tileMap.hasBomb(at: target) { canMove = true }
+            }
+        }
         if !canMove, let escapePos = escapeBombPosition, escapePos == player.gridPosition, CACurrentMediaTime() < escapeWindowDeadline {
             // During the brief escape window, allow moving off the bomb tile as long as destination is empty and not a wall
             let destType = tileMap.tileAt(col: target.col, row: target.row).type
@@ -193,6 +218,21 @@ final class GameScene: SKScene {
         // Apply movement immediately to avoid any action conflicts
         playerNode.removeAction(forKey: "move")
         playerNode.position = newPos
+
+        // Collect powerup if present
+        if let type = powerups.removeValue(forKey: target) {
+            if let node = powerupNodes.removeValue(forKey: target) { node.removeFromParent() }
+            applyPowerup(type)
+            onPowerupCollected?(type)
+        }
+        // If pass-through timer expired earlier, only end effect when standing on a non-crate tile
+        if pendingPassThroughExpiry {
+            let tileType = tileMap.tileAt(col: player.gridPosition.col, row: player.gridPosition.row).type
+            if tileType != .crate {
+                activePowerup = nil
+                pendingPassThroughExpiry = false
+            }
+        }
 
         // Determine direction from delta and animate frames
         let dx = target.col - previous.col
@@ -296,9 +336,11 @@ final class GameScene: SKScene {
     // MARK: - Bombs
     func placeBomb() {
         let gp = player.gridPosition
-        guard tileMap.canPlaceBomb(at: gp) else { return }
+        // Enforce max concurrent bombs
+        if currentBombsCount >= maxConcurrentBombs { return }
         let bomb = Bomb(position: gp)
         tileMap.place(bomb: bomb)
+        currentBombsCount += 1
 
         let tex = SKTexture(imageNamed: "bomb")
         tex.filteringMode = .nearest
@@ -325,15 +367,25 @@ final class GameScene: SKScene {
     private func explode(bomb: Bomb, bombNode: SKSpriteNode) {
         bombNode.removeFromParent()
         tileMap.removeBomb(at: bomb.position)
+        currentBombsCount = max(0, currentBombsCount - 1)
 
         let affected = tileMap.explosionTiles(from: bomb.position, range: bomb.range)
         // Spawn explosion tiles
         for gp in affected {
+            // Destroy powerups caught in the blast
+            if let node = powerupNodes.removeValue(forKey: gp) {
+                node.removeFromParent()
+                powerups.removeValue(forKey: gp)
+            }
             spawnExplosion(at: gp)
             // Destroy crates
             if tileMap.tileAt(col: gp.col, row: gp.row).type == .crate {
                 tileMap.setTile(type: .empty, at: gp)
                 refreshTile(at: gp.col, row: gp.row)
+                // 33% chance to spawn a powerup on destroyed crate
+                if Int.random(in: 0..<3) == 0 {
+                    spawnPowerup(at: gp)
+                }
             }
         }
 
@@ -389,6 +441,40 @@ final class GameScene: SKScene {
             SKAction.scale(to: 1.2, duration: 0.12)
         ])
         node.run(.sequence([appear, stay, disappear, .removeFromParent()]))
+    }
+
+    private func spawnPowerup(at gp: GridPoint) {
+        guard powerups[gp] == nil else { return }
+        guard tileMap.inBounds(col: gp.col, row: gp.row) else { return }
+        // Choose a random powerup type
+        guard let type = PowerupType.allCases.randomElement() else { return }
+        powerups[gp] = type
+
+        // Animated powerup using 4-frame ping-pong if available
+        var node: SKSpriteNode
+        if !powerupFrames.isEmpty {
+            node = SKSpriteNode(texture: powerupFrames.first)
+            node.size = CGSize(width: tileSize * 1.2, height: tileSize * 1.2)
+            let forward = powerupFrames
+            let backward = Array(powerupFrames.dropFirst().dropLast().reversed())
+            let pingPong = forward + backward
+            let anim = SKAction.animate(with: pingPong, timePerFrame: 0.12, resize: false, restore: false)
+            node.run(.repeatForever(anim), withKey: "powerupAnim")
+        } else {
+            let tex = SKTexture(imageNamed: "powerup")
+            if tex.size() != .zero {
+                tex.filteringMode = .nearest
+                node = SKSpriteNode(texture: tex)
+                node.size = CGSize(width: tileSize * 1.2, height: tileSize * 1.2)
+            } else {
+                node = SKSpriteNode(color: .cyan, size: CGSize(width: tileSize * 0.9, height: tileSize * 0.9))
+            }
+        }
+        node.position = positionFor(col: gp.col, row: gp.row)
+        node.zPosition = 6
+        node.name = "powerup_\(gp.col)_\(gp.row)"
+        worldNode.addChild(node)
+        powerupNodes[gp] = node
     }
 
     // MARK: - Enemies
@@ -554,6 +640,35 @@ final class GameScene: SKScene {
         playerNode.zPosition = 10
         worldNode.addChild(playerNode)
 
+        // Re-add powerups
+        powerupNodes.removeAll()
+        for (gp, _) in powerups {
+            let node: SKSpriteNode
+            if !powerupFrames.isEmpty {
+                node = SKSpriteNode(texture: powerupFrames.first)
+                node.size = CGSize(width: tileSize * 1.2, height: tileSize * 1.2)
+                let forward = powerupFrames
+                let backward = Array(powerupFrames.dropFirst().dropLast().reversed())
+                let pingPong = forward + backward
+                let anim = SKAction.animate(with: pingPong, timePerFrame: 0.12, resize: false, restore: false)
+                node.run(.repeatForever(anim), withKey: "powerupAnim")
+            } else {
+                let tex = SKTexture(imageNamed: "powerup")
+                if tex.size() != .zero {
+                    tex.filteringMode = .nearest
+                    node = SKSpriteNode(texture: tex)
+                    node.size = CGSize(width: tileSize * 1.2, height: tileSize * 1.2)
+                } else {
+                    node = SKSpriteNode(color: .cyan, size: CGSize(width: tileSize * 0.9, height: tileSize * 0.9))
+                }
+            }
+            node.position = positionFor(col: gp.col, row: gp.row)
+            node.zPosition = 6
+            node.name = "powerup_\(gp.col)_\(gp.row)"
+            worldNode.addChild(node)
+            powerupNodes[gp] = node
+        }
+
         // Re-add enemies
         enemyNodes.removeAll()
         for e in enemies {
@@ -672,6 +787,23 @@ final class GameScene: SKScene {
         }
     }
 
+    private func loadPowerupFrames() {
+        powerupFrames.removeAll()
+        let baseTex = SKTexture(imageNamed: "powerup")
+        if baseTex.size() != .zero {
+            baseTex.filteringMode = .nearest
+            var frames: [SKTexture] = []
+            for i in 0..<4 {
+                let x = CGFloat(i) * 0.25
+                let rect = CGRect(x: x, y: 0.0, width: 0.25, height: 1.0)
+                let tex = SKTexture(rect: rect, in: baseTex)
+                tex.filteringMode = .nearest
+                frames.append(tex)
+            }
+            powerupFrames = frames
+        }
+    }
+
     func restart() {
         // Clean up any lingering game-over labels from prior sessions
         self.enumerateChildNodes(withName: "gameOverLabel") { node, _ in
@@ -683,6 +815,9 @@ final class GameScene: SKScene {
                 label.removeFromParent()
             }
         }
+
+        escapeBombPosition = nil
+        escapeWindowDeadline = 0
 
         isPaused = false
         isGamePaused = false
@@ -696,6 +831,35 @@ final class GameScene: SKScene {
         spawnEnemies(count: 3)
         onHUDUpdate?(enemies.count, level)
         updateCamera()
+    }
+
+    private func applyPowerup(_ type: PowerupType) {
+        switch type {
+        case .moreBombs:
+            if maxConcurrentBombs < 5 { maxConcurrentBombs += 1 }
+            // Do not set activePowerup for permanent effect
+        case .passThrough:
+            activePowerup = .passThrough
+            pendingPassThroughExpiry = false
+        case .powerBomb:
+            activePowerup = .powerBomb
+        case .speedIncrease:
+            activePowerup = .speedIncrease
+        case .speedDecrease:
+            activePowerup = .speedDecrease
+        }
+    }
+
+    func expireTimedPowerup() {
+        // Only timed powerups expire; pass-through defers until player reaches non-crate tile
+        switch activePowerup {
+        case .some(.passThrough):
+            pendingPassThroughExpiry = true
+        case .some(.powerBomb), .some(.speedIncrease), .some(.speedDecrease):
+            activePowerup = nil
+        default:
+            break
+        }
     }
 }
 

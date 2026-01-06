@@ -36,6 +36,7 @@ struct TileMap {
 
     private(set) var tiles: [Tile]
     private var bombs: Set<GridPoint> = []
+    var bombsCount: Int { bombs.count }
 
     init(cols: Int, rows: Int, tileSize: CGFloat) {
         self.cols = cols
@@ -125,7 +126,7 @@ struct TileMap {
         return bombs.contains(gp)
     }
 
-    func explosionTiles(from origin: GridPoint, range: Int) -> [GridPoint] {
+    func explosionTiles(from origin: GridPoint, range: Int, pierceCrates: Bool = false) -> [GridPoint] {
         var result: Set<GridPoint> = [origin]
         let directions = [
             GridPoint(col: 1, row: 0),
