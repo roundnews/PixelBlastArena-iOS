@@ -63,6 +63,7 @@ final class GameScene: SKScene {
     var onHUDUpdate: ((Int, Int) -> Void)?
     var onGameOver: ((Bool) -> Void)?
     var onPowerupCollected: ((PowerupType) -> Void)?
+    var onCheatActivated: (() -> Void)?
 
     // Timing
     private var lastUpdateTime: TimeInterval = 0
@@ -222,6 +223,7 @@ final class GameScene: SKScene {
         // Force pass-through powerup active and make sure it doesn't auto-expire
         activePowerup = .passThrough
         pendingPassThroughExpiry = false
+        onCheatActivated?()
     }
 
     private func movePlayer(to target: GridPoint) {

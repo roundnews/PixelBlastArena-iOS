@@ -12,6 +12,8 @@ struct GameView: View {
     @State private var powerupTimer: Timer?
     @State private var announcedPowerup: PowerupType?
     @State private var announcementWorkItem: DispatchWorkItem?
+    @State private var showCheatAnnouncement: Bool = false
+    @State private var cheatAnnouncementWorkItem: DispatchWorkItem?
 
     @State private var scene: GameScene = {
         let s = GameScene()
@@ -111,6 +113,22 @@ struct GameView: View {
                 .allowsHitTesting(false)
                 .transition(.opacity.combined(with: .scale))
             }
+            if showCheatAnnouncement {
+                VStack {
+                    Spacer()
+                    Text("Cheat Active")
+                        .font(.title3).bold()
+                        .foregroundStyle(.white)
+                        .padding(.vertical, 12)
+                        .padding(.horizontal, 16)
+                        .background(Color.black.opacity(0.4))
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .shadow(radius: 6)
+                    Spacer()
+                }
+                .allowsHitTesting(false)
+                .transition(.opacity.combined(with: .scale))
+            }
 
             if powerupSecondsRemaining > 0 {
                 VStack {
@@ -145,6 +163,9 @@ struct GameView: View {
                     announcementWorkItem?.cancel()
                     announcementWorkItem = nil
                     announcedPowerup = nil
+                    self.cheatAnnouncementWorkItem?.cancel()
+                    self.cheatAnnouncementWorkItem = nil
+                    self.showCheatAnnouncement = false
                     isPaused = false
                     isGameOver = false
                 })
@@ -160,6 +181,9 @@ struct GameView: View {
                     announcementWorkItem?.cancel()
                     announcementWorkItem = nil
                     announcedPowerup = nil
+                    self.cheatAnnouncementWorkItem?.cancel()
+                    self.cheatAnnouncementWorkItem = nil
+                    self.showCheatAnnouncement = false
                     isPaused = false
                     isGameOver = false
                 })
@@ -222,6 +246,17 @@ struct GameView: View {
                     }
                 }
             }
+            scene.onCheatActivated = {
+                DispatchQueue.main.async {
+                    self.cheatAnnouncementWorkItem?.cancel()
+                    self.showCheatAnnouncement = true
+                    let work = DispatchWorkItem {
+                        self.showCheatAnnouncement = false
+                    }
+                    self.cheatAnnouncementWorkItem = work
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
+                }
+            }
             // Initialize HUD state
             self.enemiesLeft = scene.enemiesCount
             self.level = scene.level
@@ -232,6 +267,9 @@ struct GameView: View {
             powerupTimer = nil
             announcementWorkItem?.cancel()
             announcementWorkItem = nil
+            cheatAnnouncementWorkItem?.cancel()
+            cheatAnnouncementWorkItem = nil
+            showCheatAnnouncement = false
         }
     }
 
