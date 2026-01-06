@@ -8,7 +8,6 @@ enum PowerupType: CaseIterable, Equatable {
     case passThrough
     case moreBombs
 }
-
 final class GameScene: SKScene {
     // Grid/world
     private let cols = 26
@@ -54,6 +53,12 @@ final class GameScene: SKScene {
     private var escapeBombPosition: GridPoint?
     private var escapeWindowDeadline: CFTimeInterval = 0
 
+    // Portal
+    private var portalFrames: [SKTexture] = []
+    private var portalNode: SKSpriteNode?
+    private var portalGridPosition: GridPoint?
+    private var isPortalActive: Bool = false
+
     var onPauseChanged: ((Bool) -> Void)?
     var onHUDUpdate: ((Int, Int) -> Void)?
     var onGameOver: ((Bool) -> Void)?
@@ -80,7 +85,7 @@ final class GameScene: SKScene {
         loadExplosionFrames()
         loadPlayerFrames()
         loadMonsterFrames()
-        loadPowerupFrames()
+        loadPortalFrames()
 
         if worldNode.parent == nil { addChild(worldNode) }
         buildMap()
@@ -98,6 +103,8 @@ final class GameScene: SKScene {
         tileMap = TileMap(cols: cols, rows: rows, tileSize: tileSize)
         tileMap.generateBasicLayout()
         renderTiles()
+        isPortalActive = false
+        placePortalAtLeftBottom()
     }
 
     private func renderTiles() {
@@ -232,6 +239,25 @@ final class GameScene: SKScene {
                 activePowerup = nil
                 pendingPassThroughExpiry = false
             }
+        }
+        // Enter active portal: play entry effect then advance level
+        if isPortalActive, let pPos = portalGridPosition, player.gridPosition == pPos {
+            isPortalActive = false
+            if let pNode = portalNode {
+                let pulse = SKAction.sequence([
+                    SKAction.scale(to: 1.1, duration: 0.12),
+                    SKAction.scale(to: 1.0, duration: 0.12)
+                ])
+                pNode.run(pulse)
+            }
+            let vanish = SKAction.group([
+                SKAction.scale(to: 0.2, duration: 0.25),
+                SKAction.fadeOut(withDuration: 0.25)
+            ])
+            playerNode.run(vanish) { [weak self] in
+                self?.nextLevel()
+            }
+            return
         }
 
         // Determine direction from delta and animate frames
@@ -406,9 +432,9 @@ final class GameScene: SKScene {
 
         onHUDUpdate?(enemies.count, level)
 
-        // Win condition
+        // Activate portal when all enemies are gone
         if enemies.isEmpty {
-            gameOver(youWin: true)
+            activatePortal()
         }
     }
 
@@ -686,6 +712,29 @@ final class GameScene: SKScene {
             worldNode.addChild(node)
         }
 
+        // Re-add portal
+        if let pPos = portalGridPosition {
+            let node: SKSpriteNode
+            if !portalFrames.isEmpty {
+                node = SKSpriteNode(texture: portalFrames.first)
+                node.size = CGSize(width: tileSize * 1.8, height: tileSize * 3.0)
+            } else {
+                let tex = SKTexture(imageNamed: "portal")
+                if tex.size() != .zero {
+                    tex.filteringMode = .nearest
+                    node = SKSpriteNode(texture: tex)
+                    node.size = CGSize(width: tileSize * 1.8, height: tileSize * 3.0)
+                } else {
+                    node = SKSpriteNode(color: .magenta, size: CGSize(width: tileSize, height: tileSize))
+                }
+            }
+            node.position = positionFor(col: pPos.col, row: pPos.row)
+            node.zPosition = 7
+            portalNode = node
+            worldNode.addChild(node)
+            updatePortalAppearance()
+        }
+
         updateCamera()
     }
 
@@ -787,9 +836,9 @@ final class GameScene: SKScene {
         }
     }
 
-    private func loadPowerupFrames() {
-        powerupFrames.removeAll()
-        let baseTex = SKTexture(imageNamed: "powerup")
+    private func loadPortalFrames() {
+        portalFrames.removeAll()
+        let baseTex = SKTexture(imageNamed: "portal")
         if baseTex.size() != .zero {
             baseTex.filteringMode = .nearest
             var frames: [SKTexture] = []
@@ -800,8 +849,83 @@ final class GameScene: SKScene {
                 tex.filteringMode = .nearest
                 frames.append(tex)
             }
-            powerupFrames = frames
+            portalFrames = frames
         }
+    }
+
+    private func placePortalAtLeftBottom() {
+        // Remove any existing portal node
+        if let node = portalNode { node.removeFromParent() }
+        portalNode = nil
+        portalGridPosition = nil
+
+        guard let map = tileMap else { return }
+
+        // Fixed position: first column (col 1), 4th cell from bottom (row 4)
+        let gp = GridPoint(col: 1, row: 4)
+        guard map.inBounds(col: gp.col, row: gp.row) else { return }
+
+        // Ensure the portal tile and its immediate below/right/up neighbors are empty and refresh them visually
+        tileMap.setTile(type: TileType.empty, at: gp)
+        let below = GridPoint(col: gp.col, row: gp.row - 1)
+        let right = GridPoint(col: gp.col + 1, row: gp.row)
+        let up = GridPoint(col: gp.col, row: gp.row + 1)
+        if map.inBounds(col: below.col, row: below.row) { tileMap.setTile(type: TileType.empty, at: below) }
+        if map.inBounds(col: right.col, row: right.row) { tileMap.setTile(type: TileType.empty, at: right) }
+        if map.inBounds(col: up.col, row: up.row) { tileMap.setTile(type: TileType.empty, at: up) }
+
+        refreshTile(at: gp.col, row: gp.row)
+        if map.inBounds(col: below.col, row: below.row) { refreshTile(at: below.col, row: below.row) }
+        if map.inBounds(col: right.col, row: right.row) { refreshTile(at: right.col, row: right.row) }
+        if map.inBounds(col: up.col, row: up.row) { refreshTile(at: up.col, row: up.row) }
+
+        portalGridPosition = gp
+
+        guard let pPos = portalGridPosition else { return }
+        let node: SKSpriteNode
+        if !portalFrames.isEmpty {
+            node = SKSpriteNode(texture: portalFrames.first)
+            node.size = CGSize(width: tileSize * 1.8, height: tileSize * 3.0)
+        } else {
+            let tex = SKTexture(imageNamed: "portal")
+            if tex.size() != .zero {
+                tex.filteringMode = .nearest
+                node = SKSpriteNode(texture: tex)
+                node.size = CGSize(width: tileSize * 1.8, height: tileSize * 3.0)
+            } else {
+                node = SKSpriteNode(color: SKColor.magenta, size: CGSize(width: tileSize, height: tileSize))
+            }
+        }
+        node.position = positionFor(col: pPos.col, row: pPos.row)
+        node.zPosition = 7
+        portalNode = node
+        worldNode.addChild(node)
+        updatePortalAppearance()
+    }
+
+    private func updatePortalAppearance() {
+        guard let node = portalNode else { return }
+        node.removeAction(forKey: "portalAnim")
+        if isPortalActive, portalFrames.count >= 4 {
+            // Active: cycle through frames 1,2,3 continuously
+            let activeFrames = Array(portalFrames.dropFirst())
+            let anim = SKAction.animate(with: activeFrames, timePerFrame: 0.15, resize: false, restore: false)
+            node.run(.repeatForever(anim), withKey: "portalAnim")
+        } else {
+            // Inactive: show first frame only
+            if let first = portalFrames.first { node.texture = first }
+        }
+    }
+
+    private func activatePortal() {
+        isPortalActive = true
+        updatePortalAppearance()
+    }
+
+    private func nextLevel() {
+        level += 1
+        // Keep maxConcurrentBombs as-is; reset current placed bombs handled in restart()
+        restart()
     }
 
     func restart() {
@@ -818,6 +942,10 @@ final class GameScene: SKScene {
 
         escapeBombPosition = nil
         escapeWindowDeadline = 0
+        isPortalActive = false
+        portalNode = nil
+        portalGridPosition = nil
+        currentBombsCount = 0
 
         isPaused = false
         isGamePaused = false
