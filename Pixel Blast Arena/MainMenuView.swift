@@ -54,9 +54,11 @@ struct MainMenuView: View {
         }
         .ignoresSafeArea()
         .toolbar(.hidden, for: .navigationBar)
+        .onAppear { AudioManager.shared.restartBGM() }
     }
 }
 
 #Preview {
     NavigationStack { MainMenuView() }
 }
+

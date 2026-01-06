@@ -56,6 +56,17 @@ final class AudioManager {
         bgmPlayer = p
     }
 
+    func restartBGM() {
+        bgmPlayer?.stop()
+        bgmPlayer = nil
+        do {
+            try AVAudioSession.sharedInstance().setActive(false, options: [])
+        } catch {
+            // Non-fatal
+        }
+        playBGM()
+    }
+
     func stopBGM() {
         bgmPlayer?.stop()
         bgmPlayer = nil
