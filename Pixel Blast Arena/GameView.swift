@@ -7,6 +7,11 @@ struct GameView: View {
     @State private var level: Int = 1
     @State private var isGameOver: Bool = false
     @State private var didWin: Bool = false
+    @State private var activePowerup: PowerupType?
+    @State private var powerupSecondsRemaining: Int = 0
+    @State private var powerupTimer: Timer?
+    @State private var announcedPowerup: PowerupType?
+    @State private var announcementWorkItem: DispatchWorkItem?
 
     @State private var scene: GameScene = {
         let s = GameScene()
@@ -90,12 +95,56 @@ struct GameView: View {
                 .padding(.bottom)
             }
 
+            if let p = announcedPowerup {
+                VStack {
+                    Spacer()
+                    Text(powerupTitle(for: p))
+                        .font(.title3).bold()
+                        .foregroundStyle(.white)
+                        .padding(.vertical, 12)
+                        .padding(.horizontal, 16)
+                        .background(Color.black.opacity(0.4))
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .shadow(radius: 6)
+                    Spacer()
+                }
+                .allowsHitTesting(false)
+                .transition(.opacity.combined(with: .scale))
+            }
+
+            if powerupSecondsRemaining > 0 {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        Text("\(powerupSecondsRemaining)s")
+                            .font(.headline).bold()
+                            .foregroundStyle(.white)
+                            .padding(.vertical, 8)
+                            .padding(.horizontal, 12)
+                            .background(Color.black.opacity(0.6))
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .shadow(radius: 4)
+                    }
+                    .padding(.trailing)
+                    .padding(.bottom)
+                }
+                .allowsHitTesting(false)
+            }
+
             if isPaused && !isGameOver {
                 PauseOverlay(resume: {
                     scene.togglePause()
                     isPaused = false
                 }, restart: {
                     scene.restart()
+                    powerupTimer?.invalidate()
+                    powerupTimer = nil
+                    activePowerup = nil
+                    powerupSecondsRemaining = 0
+                    announcementWorkItem?.cancel()
+                    announcementWorkItem = nil
+                    announcedPowerup = nil
                     isPaused = false
                     isGameOver = false
                 })
@@ -104,6 +153,13 @@ struct GameView: View {
             if isGameOver {
                 GameOverOverlay(didWin: didWin, restart: {
                     scene.restart()
+                    powerupTimer?.invalidate()
+                    powerupTimer = nil
+                    activePowerup = nil
+                    powerupSecondsRemaining = 0
+                    announcementWorkItem?.cancel()
+                    announcementWorkItem = nil
+                    announcedPowerup = nil
                     isPaused = false
                     isGameOver = false
                 })
@@ -125,12 +181,76 @@ struct GameView: View {
                 DispatchQueue.main.async {
                     self.didWin = youWin
                     self.isGameOver = true
+                    self.powerupTimer?.invalidate()
+                    self.powerupTimer = nil
+                    self.activePowerup = nil
+                    self.powerupSecondsRemaining = 0
+                    self.announcementWorkItem?.cancel()
+                    self.announcementWorkItem = nil
+                    self.announcedPowerup = nil
+                }
+            }
+            scene.onPowerupCollected = { type in
+                DispatchQueue.main.async {
+                    // Show 3-second center announcement (non-blocking)
+                    self.announcementWorkItem?.cancel()
+                    self.announcedPowerup = type
+                    let work = DispatchWorkItem {
+                        self.announcedPowerup = nil
+                    }
+                    self.announcementWorkItem = work
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
+
+                    // Start/refresh countdown for timed powerups
+                    let duration = self.powerupDuration(for: type)
+                    self.powerupSecondsRemaining = duration
+                    self.powerupTimer?.invalidate()
+
+                    if duration > 0 {
+                        self.powerupTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { t in
+                            if self.powerupSecondsRemaining > 1 {
+                                self.powerupSecondsRemaining -= 1
+                            } else {
+                                t.invalidate()
+                                self.powerupTimer = nil
+                                self.powerupSecondsRemaining = 0
+                                scene.expireTimedPowerup()
+                            }
+                        }
+                    } else {
+                        // No timer for permanent effects
+                    }
                 }
             }
             // Initialize HUD state
             self.enemiesLeft = scene.enemiesCount
             self.level = scene.level
             self.isPaused = scene.isGamePaused
+        }
+        .onDisappear {
+            powerupTimer?.invalidate()
+            powerupTimer = nil
+            announcementWorkItem?.cancel()
+            announcementWorkItem = nil
+        }
+    }
+
+    private func powerupTitle(for type: PowerupType) -> String {
+        switch type {
+        case .powerBomb: return "Power Bomb"
+        case .speedIncrease: return "Speed Up"
+        case .speedDecrease: return "Speed Down"
+        case .passThrough: return "Pass Through"
+        case .moreBombs: return "More Bombs!"
+        }
+    }
+
+    private func powerupDuration(for type: PowerupType) -> Int {
+        switch type {
+        case .powerBomb, .speedIncrease, .speedDecrease, .passThrough:
+            return 10
+        case .moreBombs:
+            return 0
         }
     }
 }
