@@ -565,6 +565,7 @@ final class GameScene: SKScene {
             if tileMap.isWalkable(col: col, row: row) {
                 var e = Enemy()
                 e.gridPosition = GridPoint(col: col, row: row)
+                clearNeighborCrates(around: e.gridPosition)
                 enemies.append(e)
                 let initialTexture = monsterDownFrames.first ?? monsterRightFrames.first
                 let node: SKSpriteNode
@@ -580,6 +581,22 @@ final class GameScene: SKScene {
                 enemyNodes.append(node)
                 worldNode.addChild(node)
                 spawned += 1
+            }
+        }
+    }
+
+    private func clearNeighborCrates(around gp: GridPoint) {
+        let neighbors = [
+            GridPoint(col: gp.col + 1, row: gp.row),
+            GridPoint(col: gp.col - 1, row: gp.row),
+            GridPoint(col: gp.col, row: gp.row + 1),
+            GridPoint(col: gp.col, row: gp.row - 1)
+        ]
+        for n in neighbors {
+            if tileMap.inBounds(col: n.col, row: n.row),
+               tileMap.tileAt(col: n.col, row: n.row).type == .crate {
+                tileMap.setTile(type: .empty, at: n)
+                refreshTile(at: n.col, row: n.row)
             }
         }
     }
