@@ -97,7 +97,7 @@ final class GameScene: SKScene {
         if worldNode.parent == nil { addChild(worldNode) }
         buildMap()
         spawnPlayer()
-        spawnEnemies(count: 3)
+        spawnEnemies(count: enemiesCountForCurrentLevel())
 
         if cameraNode.parent == nil { addChild(cameraNode) }
         camera = cameraNode
@@ -112,6 +112,32 @@ final class GameScene: SKScene {
         renderTiles()
         isPortalActive = false
         placePortalAtLeftBottom()
+    }
+
+    // MARK: - Level-based parameters
+    private func enemiesCountForCurrentLevel() -> Int {
+        return max(1, 3 + (level - 1))
+    }
+
+    private func levelSpeedMultiplier() -> CGFloat {
+        // +10% speed per level above 1
+        let l = max(1, level)
+        return pow(1.1, CGFloat(l - 1))
+    }
+
+    private func monsterTintColorForLevel() -> SKColor? {
+        // Level 1: no tint (keep original green). Higher levels: rotate hue for variety.
+        guard level > 1 else { return nil }
+        let hue = CGFloat(((level - 1) % 6)) / 6.0 // cycle through 6 hues
+        return SKColor(hue: hue, saturation: 0.8, brightness: 1.0, alpha: 1.0)
+    }
+
+    private func monsterTintBlendFactor() -> CGFloat { 0.6 }
+
+    private func brickGrayBlendFactor() -> CGFloat {
+        // By level 5: fully grayscale. Levels 1..5 map to 0.0..1.0
+        let l = max(1, min(level, 5))
+        return CGFloat(l - 1) / 4.0
     }
 
     private func renderTiles() {
@@ -137,6 +163,8 @@ final class GameScene: SKScene {
                     overlay.zPosition = 1
                     overlay.name = "crateOverlay_\(c)_\(r)"
                     worldNode.addChild(overlay)
+                    overlay.color = .gray
+                    overlay.colorBlendFactor = brickGrayBlendFactor()
                 }
             }
         }
@@ -163,6 +191,8 @@ final class GameScene: SKScene {
                     overlay.zPosition = 1
                     overlay.name = overlayName
                     worldNode.addChild(overlay)
+                    overlay.color = .gray
+                    overlay.colorBlendFactor = brickGrayBlendFactor()
                 }
             } else {
                 if let overlay = worldNode.childNode(withName: overlayName) as? SKSpriteNode {
@@ -605,6 +635,12 @@ final class GameScene: SKScene {
                 } else {
                     node = SKSpriteNode(color: .red, size: CGSize(width: tileSize*0.8, height: tileSize*0.8))
                 }
+                if let tint = monsterTintColorForLevel() {
+                    node.color = tint
+                    node.colorBlendFactor = monsterTintBlendFactor()
+                } else {
+                    node.colorBlendFactor = 0.0
+                }
                 node.position = positionFor(col: col, row: row)
                 node.zPosition = 9
                 enemyNodes.append(node)
@@ -631,12 +667,16 @@ final class GameScene: SKScene {
     }
 
     private func updateEnemies(deltaTime: TimeInterval) {
+        let speedMult = levelSpeedMultiplier()
+        let moveInterval = 0.3 / speedMult
+        let moveDuration = 0.16 / speedMult
+
         // Random stepping every 0.3s approx
         for (i, var enemy) in enemies.enumerated() {
             enemy.timeSinceLastMove += deltaTime
             var didMoveThisTick = false
 
-            if enemy.timeSinceLastMove > 0.3 {
+            if enemy.timeSinceLastMove > moveInterval {
                 enemy.timeSinceLastMove = 0
 
                 // Candidate directions (right, left, up, down as grid deltas)
@@ -661,7 +701,7 @@ final class GameScene: SKScene {
                             let dy = target.row - prev.row
                             let dir: Direction = (abs(dx) > abs(dy)) ? (dx > 0 ? .right : .left) : (dy > 0 ? .up : .down)
                             animateEnemy(node: node, direction: dir)
-                            node.run(SKAction.move(to: pos, duration: 0.16)) {
+                            node.run(SKAction.move(to: pos, duration: moveDuration)) {
                                 node.position = pos // snap to grid center to avoid drift
                             }
                         }
@@ -709,7 +749,7 @@ final class GameScene: SKScene {
                                     let dy = target.row - prev.row
                                     let dir: Direction = (abs(dx) > abs(dy)) ? (dx > 0 ? .right : .left) : (dy > 0 ? .up : .down)
                                     animateEnemy(node: node, direction: dir)
-                                    node.run(SKAction.move(to: pos, duration: 0.16)) {
+                                    node.run(SKAction.move(to: pos, duration: moveDuration)) {
                                         node.position = pos // snap to grid center to avoid drift
                                     }
                                 }
@@ -857,6 +897,12 @@ final class GameScene: SKScene {
                 node.size = CGSize(width: tileSize * 1.8, height: tileSize * 1.8)
             } else {
                 node = SKSpriteNode(color: .red, size: CGSize(width: tileSize*0.8, height: tileSize*0.8))
+            }
+            if let tint = monsterTintColorForLevel() {
+                node.color = tint
+                node.colorBlendFactor = monsterTintBlendFactor()
+            } else {
+                node.colorBlendFactor = 0.0
             }
             node.position = positionFor(col: e.gridPosition.col, row: e.gridPosition.row)
             node.zPosition = 9
@@ -1125,7 +1171,7 @@ final class GameScene: SKScene {
         worldNode.removeAllChildren()
         buildMap()
         spawnPlayer()
-        spawnEnemies(count: 3)
+        spawnEnemies(count: enemiesCountForCurrentLevel())
         onHUDUpdate?(enemies.count, level)
         updateCamera()
     }
