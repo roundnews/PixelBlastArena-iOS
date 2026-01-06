@@ -420,7 +420,10 @@ final class GameScene: SKScene {
         ])
         let countdown = SKAction.repeat(pulse, count: Int(bomb.fuseTime / 0.4))
         bombNode.run(countdown) { [weak self] in
-            self?.explode(bomb: bomb, bombNode: bombNode)
+            guard let self = self else { return }
+            // If this bomb already exploded via a chain reaction, skip
+            if !self.tileMap.hasBomb(at: bomb.position) { return }
+            self.explode(bomb: bomb, bombNode: bombNode)
         }
     }
 
@@ -433,6 +436,27 @@ final class GameScene: SKScene {
         AudioManager.shared.playSFX(named: "bomb-explode")
 
         let affected = tileMap.explosionTiles(from: bomb.position, range: bomb.range)
+        // Chain reaction: trigger any bombs caught in the blast immediately
+        for gp in affected {
+            if tileMap.hasBomb(at: gp) {
+                if let chainedNode = worldNode.childNode(withName: "bomb_\(gp.col)_\(gp.row)") as? SKSpriteNode {
+                    // Cancel its countdown and detonate shortly for visual chain effect
+                    chainedNode.removeAllActions()
+                    let chainedBomb = Bomb(position: gp)
+                    let delay = SKAction.wait(forDuration: 0.08)
+                    chainedNode.run(.sequence([delay, .run { [weak self] in
+                        guard let self = self else { return }
+                        // Skip if already exploded
+                        if !self.tileMap.hasBomb(at: chainedBomb.position) { return }
+                        self.explode(bomb: chainedBomb, bombNode: chainedNode)
+                    }]))
+                } else {
+                    // If no node found, ensure state stays consistent
+                    tileMap.removeBomb(at: gp)
+                    currentBombsCount = max(0, currentBombsCount - 1)
+                }
+            }
+        }
         // Spawn explosion tiles
         for gp in affected {
             // Destroy powerups caught in the blast
