@@ -67,6 +67,11 @@ final class GameScene: SKScene {
     // Timing
     private var lastUpdateTime: TimeInterval = 0
 
+    // Cheat state
+    private var isInvincible: Bool = false
+    private var cheatBuffer: [Direction] = []
+    private let cheatPattern: [Direction] = [.up, .up, .down, .left, .right, .up, .up, .down, .left, .right]
+
     // Ensure scene setup runs only once per scene instance
     private var didSetup: Bool = false
 
@@ -192,8 +197,31 @@ final class GameScene: SKScene {
         case .left: delta = (-1, 0)
         case .right: delta = (1, 0)
         }
+
+        // Record input for cheat detection
+        recordCheatInput(direction)
+
         let target = GridPoint(col: player.gridPosition.col + delta.dc, row: player.gridPosition.row + delta.dr)
         movePlayer(to: target)
+    }
+
+    private func recordCheatInput(_ direction: Direction) {
+        cheatBuffer.append(direction)
+        // Keep only the last N inputs where N is the pattern length
+        if cheatBuffer.count > cheatPattern.count {
+            cheatBuffer.removeFirst(cheatBuffer.count - cheatPattern.count)
+        }
+        if cheatBuffer == cheatPattern {
+            activateCheatInvincibility()
+            cheatBuffer.removeAll()
+        }
+    }
+
+    private func activateCheatInvincibility() {
+        isInvincible = true
+        // Force pass-through powerup active and make sure it doesn't auto-expire
+        activePowerup = .passThrough
+        pendingPassThroughExpiry = false
     }
 
     private func movePlayer(to target: GridPoint) {
@@ -416,8 +444,8 @@ final class GameScene: SKScene {
             }
         }
 
-        // Damage player
-        if affected.contains(player.gridPosition) {
+        // Damage player (unless invincible)
+        if affected.contains(player.gridPosition) && !isInvincible {
             gameOver(youWin: false)
         }
 
@@ -643,10 +671,12 @@ final class GameScene: SKScene {
             enemies[i] = enemy
         }
 
-        // Player collision
+        // Player collision (unless invincible)
         for enemy in enemies {
             if enemy.gridPosition == player.gridPosition {
-                gameOver(youWin: false)
+                if !isInvincible {
+                    gameOver(youWin: false)
+                }
                 break
             }
         }
@@ -1067,6 +1097,10 @@ final class GameScene: SKScene {
         // Only timed powerups expire; pass-through defers until player reaches non-crate tile
         switch activePowerup {
         case .some(.passThrough):
+            if isInvincible {
+                // Do not expire pass-through while invincible cheat is active
+                break
+            }
             pendingPassThroughExpiry = true
         case .some(.powerBomb), .some(.speedIncrease), .some(.speedDecrease):
             activePowerup = nil
