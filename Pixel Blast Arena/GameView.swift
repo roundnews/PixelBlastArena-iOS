@@ -29,6 +29,13 @@ struct GameView: View {
     var body: some View {
         ZStack {
             SpriteView(scene: scene)
+                .simultaneousGesture(
+                    TapGesture(count: 2).onEnded {
+                        if !isPaused && !isGameOver {
+                            scene.placeBomb()
+                        }
+                    }
+                )
                 .background(Color.black)
                 .ignoresSafeArea()
 
