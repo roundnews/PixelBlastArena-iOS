@@ -114,6 +114,43 @@ final class AudioManager: NSObject {
 
         p.play()
         sfxPlayers.append(p)
+        // For bomb sounds, layer additional copies to perceptually boost loudness
+        let extraCopies: Int
+        switch name {
+        case "bomb-explode": extraCopies = 2
+        case "bomb-place": extraCopies = 1
+        default: extraCopies = 0
+        }
+        if extraCopies > 0 {
+            for _ in 0..<extraCopies {
+                var boostPlayer: AVAudioPlayer?
+                #if canImport(UIKit)
+                if let dataAsset = NSDataAsset(name: name) {
+                    do {
+                        boostPlayer = try AVAudioPlayer(data: dataAsset.data)
+                    } catch {
+                        print("AudioManager: Failed to create boosted SFX from data asset \(name): \(error)")
+                    }
+                }
+                #endif
+                if boostPlayer == nil, let url = Bundle.main.url(forResource: name, withExtension: "mp3") {
+                    do {
+                        boostPlayer = try AVAudioPlayer(contentsOf: url)
+                    } catch {
+                        print("AudioManager: Failed to create boosted SFX from file \(name): \(error)")
+                    }
+                }
+                if let bp = boostPlayer {
+                    bp.volume = max(0.0, min(1.0, volume))
+                    bp.delegate = self
+                    bp.prepareToPlay()
+                    // Keep BGM ducked until all layered copies finish
+                    beginDuckingForSFX()
+                    bp.play()
+                    sfxPlayers.append(bp)
+                }
+            }
+        }
     }
     
     private func beginDuckingForSFX() {
