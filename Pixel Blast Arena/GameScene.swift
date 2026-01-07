@@ -120,9 +120,11 @@ final class GameScene: SKScene {
     }
 
     private func levelSpeedMultiplier() -> CGFloat {
-        // +10% speed per level above 1
+        // Baseline at level 1 is 20% slower than previous config
+        let base: CGFloat = 0.8
         let l = max(1, level)
-        return pow(1.1, CGFloat(l - 1))
+        // Each level above 1 increases speed by 10%
+        return base * pow(1.1, CGFloat(l - 1))
     }
 
     private func monsterTintColorForLevel() -> SKColor? {
