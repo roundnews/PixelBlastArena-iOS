@@ -16,6 +16,9 @@ struct GameView: View {
     @State private var cheatAnnouncementWorkItem: DispatchWorkItem?
     @State private var showPortalHint: Bool = false
     @State private var portalHintWorkItem: DispatchWorkItem?
+    @State private var showBombHint: Bool = false
+    @State private var hasShownBombHint: Bool = false
+    @State private var bombHintWorkItem: DispatchWorkItem?
 
     @State private var scene: GameScene = {
         let s = GameScene()
@@ -83,6 +86,16 @@ struct GameView: View {
                     Spacer()
 
                     Button {
+                        if !hasShownBombHint {
+                            hasShownBombHint = true
+                            bombHintWorkItem?.cancel()
+                            showBombHint = true
+                            let work = DispatchWorkItem {
+                                self.showBombHint = false
+                            }
+                            bombHintWorkItem = work
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
+                        }
                         scene.placeBomb()
                     } label: {
                         Image(systemName: "flame.fill")
@@ -148,6 +161,22 @@ struct GameView: View {
                 .allowsHitTesting(false)
                 .transition(.opacity.combined(with: .scale))
             }
+            if showBombHint {
+                VStack {
+                    Spacer()
+                    Text("Also Double Tap to place bombs")
+                        .font(.title3).bold()
+                        .foregroundStyle(.white)
+                        .padding(.vertical, 12)
+                        .padding(.horizontal, 16)
+                        .background(Color.black.opacity(0.4))
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .shadow(radius: 6)
+                    Spacer()
+                }
+                .allowsHitTesting(false)
+                .transition(.opacity.combined(with: .scale))
+            }
 
             if powerupSecondsRemaining > 0 {
                 VStack {
@@ -188,6 +217,10 @@ struct GameView: View {
                     self.portalHintWorkItem?.cancel()
                     self.portalHintWorkItem = nil
                     self.showPortalHint = false
+                    self.bombHintWorkItem?.cancel()
+                    self.bombHintWorkItem = nil
+                    self.showBombHint = false
+                    self.hasShownBombHint = false
                     isPaused = false
                     isGameOver = false
                 })
@@ -209,6 +242,10 @@ struct GameView: View {
                     self.portalHintWorkItem?.cancel()
                     self.portalHintWorkItem = nil
                     self.showPortalHint = false
+                    self.bombHintWorkItem?.cancel()
+                    self.bombHintWorkItem = nil
+                    self.showBombHint = false
+                    self.hasShownBombHint = false
                     isPaused = false
                     isGameOver = false
                 })
@@ -309,6 +346,9 @@ struct GameView: View {
             portalHintWorkItem?.cancel()
             portalHintWorkItem = nil
             showPortalHint = false
+            bombHintWorkItem?.cancel()
+            bombHintWorkItem = nil
+            showBombHint = false
         }
     }
 
