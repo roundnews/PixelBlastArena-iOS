@@ -19,6 +19,7 @@ struct GameView: View {
     @State private var showBombHint: Bool = false
     @State private var hasShownBombHint: Bool = false
     @State private var bombHintWorkItem: DispatchWorkItem?
+    @State private var didDoubleTapBomb: Bool = false
 
     @State private var scene: GameScene = {
         let s = GameScene()
@@ -32,6 +33,19 @@ struct GameView: View {
                 .simultaneousGesture(
                     TapGesture(count: 2).onEnded {
                         if !isPaused && !isGameOver {
+                            // Mark that user used double-tap bomb once
+                            didDoubleTapBomb = true
+                            // Show the bomb hint if not shown yet
+                            if !hasShownBombHint {
+                                hasShownBombHint = true
+                                bombHintWorkItem?.cancel()
+                                showBombHint = true
+                                let work = DispatchWorkItem {
+                                    self.showBombHint = false
+                                }
+                                bombHintWorkItem = work
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
+                            }
                             scene.placeBomb()
                         }
                     }
@@ -92,29 +106,31 @@ struct GameView: View {
 
                     Spacer()
 
-                    Button {
-                        if !hasShownBombHint {
-                            hasShownBombHint = true
-                            bombHintWorkItem?.cancel()
-                            showBombHint = true
-                            let work = DispatchWorkItem {
-                                self.showBombHint = false
+                    if !(didDoubleTapBomb || showBombHint) {
+                        Button {
+                            if !hasShownBombHint {
+                                hasShownBombHint = true
+                                bombHintWorkItem?.cancel()
+                                showBombHint = true
+                                let work = DispatchWorkItem {
+                                    self.showBombHint = false
+                                }
+                                bombHintWorkItem = work
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
                             }
-                            bombHintWorkItem = work
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
+                            scene.placeBomb()
+                        } label: {
+                            Image(systemName: "flame.fill")
+                                .font(.system(size: 28, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(22)
+                                .background(.red)
+                                .clipShape(Circle())
+                                .shadow(radius: 6)
                         }
-                        scene.placeBomb()
-                    } label: {
-                        Image(systemName: "flame.fill")
-                            .font(.system(size: 28, weight: .bold))
-                            .foregroundStyle(.white)
-                            .padding(22)
-                            .background(.red)
-                            .clipShape(Circle())
-                            .shadow(radius: 6)
+                        .disabled(isPaused || isGameOver)
+                        .padding(.trailing)
                     }
-                    .disabled(isPaused || isGameOver)
-                    .padding(.trailing)
                 }
                 .padding(.bottom)
             }
@@ -228,6 +244,7 @@ struct GameView: View {
                     self.bombHintWorkItem = nil
                     self.showBombHint = false
                     self.hasShownBombHint = false
+                    self.didDoubleTapBomb = false
                     isPaused = false
                     isGameOver = false
                 })
@@ -253,6 +270,7 @@ struct GameView: View {
                     self.bombHintWorkItem = nil
                     self.showBombHint = false
                     self.hasShownBombHint = false
+                    self.didDoubleTapBomb = false
                     isPaused = false
                     isGameOver = false
                 })
@@ -356,6 +374,7 @@ struct GameView: View {
             bombHintWorkItem?.cancel()
             bombHintWorkItem = nil
             showBombHint = false
+            didDoubleTapBomb = false
         }
     }
 
