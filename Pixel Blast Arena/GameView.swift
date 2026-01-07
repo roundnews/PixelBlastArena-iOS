@@ -23,6 +23,8 @@ struct GameView: View {
     @State private var hasShownBombHint: Bool = false
     @State private var bombHintWorkItem: DispatchWorkItem?
     @State private var didDoubleTapBomb: Bool = false
+    @State private var dpadFrame: CGRect = .zero
+    @State private var isDPadRepositionMode: Bool = false
     @State private var dpadOffset: CGSize = .zero
     @State private var dpadDragActive: Bool = false
     @State private var dpadDragStartOffset: CGSize = .zero
@@ -112,46 +114,13 @@ struct GameView: View {
                     }
                     .disabled(isPaused || isGameOver)
                     .contentShape(Rectangle())
-                    .overlay(alignment: .center) {
-                        Color.clear
-                            .frame(width: 60, height: 60)
-                            .allowsHitTesting(didDoubleTapBomb || showBombHint)
-                            .contentShape(Rectangle())
-                            .gesture(
-                                DragGesture(minimumDistance: 0)
-                                    .onChanged { value in
-                                        dpadCurrentDragTranslation = value.translation
-                                        if dpadDragActive {
-                                            dpadOffset = CGSize(
-                                                width: dpadDragStartOffset.width + value.translation.width,
-                                                height: dpadDragStartOffset.height + value.translation.height
-                                            )
-                                        } else if (didDoubleTapBomb || showBombHint) {
-                                            if dpadDragActivationWorkItem == nil {
-                                                let work = DispatchWorkItem {
-                                                    dpadDragActive = true
-                                                    dpadDragStartOffset = CGSize(
-                                                        width: dpadOffset.width - dpadCurrentDragTranslation.width,
-                                                        height: dpadOffset.height - dpadCurrentDragTranslation.height
-                                                    )
-#if canImport(UIKit)
-                                                    let generator = UIImpactFeedbackGenerator(style: .light)
-                                                    generator.impactOccurred()
-#endif
-                                                }
-                                                dpadDragActivationWorkItem = work
-                                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: work)
-                                            }
-                                        }
-                                    }
-                                    .onEnded { _ in
-                                        dpadDragActivationWorkItem?.cancel()
-                                        dpadDragActivationWorkItem = nil
-                                        dpadDragActive = false
-                                        dpadCurrentDragTranslation = .zero
-                                    }
-                            )
-                    }
+                    .offset(dpadOffset)
+                    .background(
+                        GeometryReader { geo in
+                            Color.clear
+                                .preference(key: DPadFramePreferenceKey.self, value: geo.frame(in: .named("GameViewSpace")))
+                        }
+                    )
 
                     Spacer()
 
@@ -324,9 +293,25 @@ struct GameView: View {
                     isGameOver = false
                 })
             }
+            SingleTapCatcher { point in
+                if isDPadRepositionMode {
+                    // Move D-pad so its center goes to the tapped point
+                    let currentCenter = CGPoint(x: dpadFrame.midX, y: dpadFrame.midY)
+                    let dx = point.x - currentCenter.x
+                    let dy = point.y - currentCenter.y
+                    dpadOffset = CGSize(width: dpadOffset.width + dx, height: dpadOffset.height + dy)
+                    isDPadRepositionMode = false
+#if canImport(UIKit)
+                    let generator = UIImpactFeedbackGenerator(style: .light)
+                    generator.impactOccurred()
+#endif
+                }
+            }
+            .allowsHitTesting(isDPadRepositionMode)
         }
         .background(Color.black)
         .ignoresSafeArea()
+        .coordinateSpace(name: "GameViewSpace")
         .onAppear {
             scene.onPauseChanged = { paused in
                 DispatchQueue.main.async { self.isPaused = paused }
@@ -408,6 +393,9 @@ struct GameView: View {
             self.enemiesLeft = scene.enemiesCount
             self.level = scene.level
             self.isPaused = scene.isGamePaused
+        }
+        .onPreferenceChange(DPadFramePreferenceKey.self) { rect in
+            self.dpadFrame = rect
         }
         .onDisappear {
             powerupTimer?.invalidate()
@@ -527,6 +515,41 @@ struct GameOverOverlay: View {
         }
     }
 }
+
+// Preference key to capture the D-pad frame in GameView's coordinate space
+private struct DPadFramePreferenceKey: PreferenceKey {
+    static var defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) { value = nextValue() }
+}
+
+#if canImport(UIKit)
+// Full-screen transparent view that detects single taps and reports location
+private struct SingleTapCatcher: UIViewRepresentable {
+    var onTap: (CGPoint) -> Void
+    func makeCoordinator() -> Coordinator { Coordinator(onTap: onTap) }
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.backgroundColor = .clear
+        let recognizer = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTap(_:)))
+        recognizer.numberOfTapsRequired = 1
+        recognizer.cancelsTouchesInView = true
+        view.addGestureRecognizer(recognizer)
+        return view
+    }
+    func updateUIView(_ uiView: UIView, context: Context) {}
+    class Coordinator: NSObject {
+        let onTap: (CGPoint) -> Void
+        init(onTap: @escaping (CGPoint) -> Void) { self.onTap = onTap }
+        @objc func handleTap(_ sender: UITapGestureRecognizer) {
+            guard let view = sender.view else { return }
+            let point = sender.location(in: view)
+            onTap(point)
+        }
+    }
+}
+#else
+private struct SingleTapCatcher: View { var onTap: (CGPoint) -> Void; var body: some View { Color.clear } }
+#endif
 
 #Preview {
     GameView()
