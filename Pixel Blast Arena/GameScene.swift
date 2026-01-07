@@ -126,13 +126,21 @@ final class GameScene: SKScene {
     }
 
     private func monsterTintColorForLevel() -> SKColor? {
-        // Level 1: no tint (keep original green). Higher levels: rotate hue for variety.
+        // Level 1: no tint (keep original green). Higher levels: apply high-contrast palette.
         guard level > 1 else { return nil }
-        let hue = CGFloat(((level - 1) % 6)) / 6.0 // cycle through 6 hues
-        return SKColor(hue: hue, saturation: 0.8, brightness: 1.0, alpha: 1.0)
+        let palette: [SKColor] = [
+            SKColor.red,
+            SKColor.magenta,
+            SKColor.blue,
+            SKColor.purple,
+            SKColor.orange,
+            SKColor.cyan
+        ]
+        let idx = (level - 2) % palette.count
+        return palette[idx]
     }
 
-    private func monsterTintBlendFactor() -> CGFloat { 0.6 }
+    private func monsterTintBlendFactor() -> CGFloat { 0.9 }
 
     private func brickGrayBlendFactor() -> CGFloat {
         // By level 5: fully grayscale. Levels 1..5 map to 0.0..1.0
