@@ -831,6 +831,12 @@ final class GameScene: SKScene {
         isGamePaused = true
         // Removed the block that creates and adds a game over label as per instructions
     }
+    
+    func startNewGame() {
+        // Reset level to defaults for a brand new game
+        level = 1
+        restart()
+    }
 
     private func computedTileSize(for viewSize: CGSize) -> CGFloat {
         // Ensure world is larger than the viewport in both axes to allow scrolling

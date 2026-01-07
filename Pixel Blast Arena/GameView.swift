@@ -155,7 +155,7 @@ struct GameView: View {
                     scene.togglePause()
                     isPaused = false
                 }, restart: {
-                    scene.restart()
+                    scene.startNewGame()
                     powerupTimer?.invalidate()
                     powerupTimer = nil
                     activePowerup = nil
@@ -173,7 +173,7 @@ struct GameView: View {
 
             if isGameOver {
                 GameOverOverlay(didWin: didWin, restart: {
-                    scene.restart()
+                    scene.startNewGame()
                     powerupTimer?.invalidate()
                     powerupTimer = nil
                     activePowerup = nil
@@ -377,3 +377,4 @@ struct GameOverOverlay: View {
 #Preview {
     GameView()
 }
+
