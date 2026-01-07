@@ -58,12 +58,14 @@ final class GameScene: SKScene {
     private var portalNode: SKSpriteNode?
     private var portalGridPosition: GridPoint?
     private var isPortalActive: Bool = false
+    private var hasShownInactivePortalHint: Bool = false
 
     var onPauseChanged: ((Bool) -> Void)?
     var onHUDUpdate: ((Int, Int) -> Void)?
     var onGameOver: ((Bool) -> Void)?
     var onPowerupCollected: ((PowerupType) -> Void)?
     var onCheatActivated: (() -> Void)?
+    var onPortalHint: (() -> Void)?
 
     // Timing
     private var lastUpdateTime: TimeInterval = 0
@@ -111,6 +113,7 @@ final class GameScene: SKScene {
         tileMap.generateBasicLayout()
         renderTiles()
         isPortalActive = false
+        hasShownInactivePortalHint = false
         placePortalAtLeftBottom()
     }
 
@@ -310,6 +313,11 @@ final class GameScene: SKScene {
                 activePowerup = nil
                 pendingPassThroughExpiry = false
             }
+        }
+        // If player steps onto an inactive portal for the first time, show hint
+        if !isPortalActive, let pPos = portalGridPosition, player.gridPosition == pPos, !hasShownInactivePortalHint {
+            hasShownInactivePortalHint = true
+            onPortalHint?()
         }
         // Enter active portal: play entry effect then advance level
         if isPortalActive, let pPos = portalGridPosition, player.gridPosition == pPos {

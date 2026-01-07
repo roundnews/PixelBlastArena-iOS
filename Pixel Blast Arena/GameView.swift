@@ -14,6 +14,8 @@ struct GameView: View {
     @State private var announcementWorkItem: DispatchWorkItem?
     @State private var showCheatAnnouncement: Bool = false
     @State private var cheatAnnouncementWorkItem: DispatchWorkItem?
+    @State private var showPortalHint: Bool = false
+    @State private var portalHintWorkItem: DispatchWorkItem?
 
     @State private var scene: GameScene = {
         let s = GameScene()
@@ -129,6 +131,23 @@ struct GameView: View {
                 .allowsHitTesting(false)
                 .transition(.opacity.combined(with: .scale))
             }
+            if showPortalHint {
+                VStack {
+                    Spacer()
+                    Text("Portal Inactive\nDestroy all monsters")
+                        .multilineTextAlignment(.center)
+                        .font(.title3).bold()
+                        .foregroundStyle(.white)
+                        .padding(.vertical, 12)
+                        .padding(.horizontal, 16)
+                        .background(Color.black.opacity(0.4))
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .shadow(radius: 6)
+                    Spacer()
+                }
+                .allowsHitTesting(false)
+                .transition(.opacity.combined(with: .scale))
+            }
 
             if powerupSecondsRemaining > 0 {
                 VStack {
@@ -166,6 +185,9 @@ struct GameView: View {
                     self.cheatAnnouncementWorkItem?.cancel()
                     self.cheatAnnouncementWorkItem = nil
                     self.showCheatAnnouncement = false
+                    self.portalHintWorkItem?.cancel()
+                    self.portalHintWorkItem = nil
+                    self.showPortalHint = false
                     isPaused = false
                     isGameOver = false
                 })
@@ -184,6 +206,9 @@ struct GameView: View {
                     self.cheatAnnouncementWorkItem?.cancel()
                     self.cheatAnnouncementWorkItem = nil
                     self.showCheatAnnouncement = false
+                    self.portalHintWorkItem?.cancel()
+                    self.portalHintWorkItem = nil
+                    self.showPortalHint = false
                     isPaused = false
                     isGameOver = false
                 })
@@ -257,6 +282,17 @@ struct GameView: View {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
                 }
             }
+            scene.onPortalHint = {
+                DispatchQueue.main.async {
+                    self.portalHintWorkItem?.cancel()
+                    self.showPortalHint = true
+                    let work = DispatchWorkItem {
+                        self.showPortalHint = false
+                    }
+                    self.portalHintWorkItem = work
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
+                }
+            }
             // Initialize HUD state
             self.enemiesLeft = scene.enemiesCount
             self.level = scene.level
@@ -270,6 +306,9 @@ struct GameView: View {
             cheatAnnouncementWorkItem?.cancel()
             cheatAnnouncementWorkItem = nil
             showCheatAnnouncement = false
+            portalHintWorkItem?.cancel()
+            portalHintWorkItem = nil
+            showPortalHint = false
         }
     }
 
