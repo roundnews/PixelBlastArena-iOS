@@ -26,6 +26,8 @@ struct GameView: View {
     @State private var dpadOffset: CGSize = .zero
     @State private var dpadDragActive: Bool = false
     @State private var dpadDragStartOffset: CGSize = .zero
+    @State private var dpadDragActivationWorkItem: DispatchWorkItem?
+    @State private var dpadCurrentDragTranslation: CGSize = .zero
 
     @State private var scene: GameScene = {
         let s = GameScene()
@@ -116,30 +118,37 @@ struct GameView: View {
                             .allowsHitTesting(didDoubleTapBomb || showBombHint)
                             .contentShape(Rectangle())
                             .gesture(
-                                LongPressGesture(minimumDuration: 1.5)
-                                    .sequenced(before: DragGesture(minimumDistance: 0))
+                                DragGesture(minimumDistance: 0)
                                     .onChanged { value in
-                                        switch value {
-                                        case .first(true):
-                                            dpadDragActive = true
-                                            dpadDragStartOffset = dpadOffset
+                                        dpadCurrentDragTranslation = value.translation
+                                        if dpadDragActive {
+                                            dpadOffset = CGSize(
+                                                width: dpadDragStartOffset.width + value.translation.width,
+                                                height: dpadDragStartOffset.height + value.translation.height
+                                            )
+                                        } else if (didDoubleTapBomb || showBombHint) {
+                                            if dpadDragActivationWorkItem == nil {
+                                                let work = DispatchWorkItem {
+                                                    dpadDragActive = true
+                                                    dpadDragStartOffset = CGSize(
+                                                        width: dpadOffset.width - dpadCurrentDragTranslation.width,
+                                                        height: dpadOffset.height - dpadCurrentDragTranslation.height
+                                                    )
 #if canImport(UIKit)
-                                            let generator = UIImpactFeedbackGenerator(style: .light)
-                                            generator.impactOccurred()
+                                                    let generator = UIImpactFeedbackGenerator(style: .light)
+                                                    generator.impactOccurred()
 #endif
-                                        case .second(true, let drag?):
-                                            if dpadDragActive {
-                                                dpadOffset = CGSize(
-                                                    width: dpadDragStartOffset.width + drag.translation.width,
-                                                    height: dpadDragStartOffset.height + drag.translation.height
-                                                )
+                                                }
+                                                dpadDragActivationWorkItem = work
+                                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: work)
                                             }
-                                        default:
-                                            break
                                         }
                                     }
                                     .onEnded { _ in
+                                        dpadDragActivationWorkItem?.cancel()
+                                        dpadDragActivationWorkItem = nil
                                         dpadDragActive = false
+                                        dpadCurrentDragTranslation = .zero
                                     }
                             )
                     }
