@@ -1,5 +1,8 @@
 import SwiftUI
 import SpriteKit
+#if canImport(UIKit)
+import UIKit
+#endif
 
 struct GameView: View {
     @State private var isPaused: Bool = false
@@ -107,30 +110,39 @@ struct GameView: View {
                     }
                     .disabled(isPaused || isGameOver)
                     .contentShape(Rectangle())
-                    .offset(dpadOffset)
-                    .highPriorityGesture(
-                        LongPressGesture(minimumDuration: 0.4).onEnded { _ in
-                            // Enable drag mode only when bomb button is hidden
-                            if didDoubleTapBomb || showBombHint {
-                                dpadDragActive = true
-                                dpadDragStartOffset = dpadOffset
-                            }
-                        }
-                    )
-                    .gesture(
-                        DragGesture()
-                            .onChanged { value in
-                                if dpadDragActive && (didDoubleTapBomb || showBombHint) {
-                                    dpadOffset = CGSize(
-                                        width: dpadDragStartOffset.width + value.translation.width,
-                                        height: dpadDragStartOffset.height + value.translation.height
-                                    )
-                                }
-                            }
-                            .onEnded { _ in
-                                dpadDragActive = false
-                            }
-                    )
+                    .overlay(alignment: .center) {
+                        Color.clear
+                            .frame(width: 60, height: 60)
+                            .allowsHitTesting(didDoubleTapBomb || showBombHint)
+                            .contentShape(Rectangle())
+                            .gesture(
+                                LongPressGesture(minimumDuration: 1.0)
+                                    .sequenced(before: DragGesture())
+                                    .onChanged { value in
+                                        switch value {
+                                        case .first(true):
+                                            dpadDragActive = true
+                                            dpadDragStartOffset = dpadOffset
+#if canImport(UIKit)
+                                            let generator = UIImpactFeedbackGenerator(style: .light)
+                                            generator.impactOccurred()
+#endif
+                                        case .second(true, let drag?):
+                                            if dpadDragActive {
+                                                dpadOffset = CGSize(
+                                                    width: dpadDragStartOffset.width + drag.translation.width,
+                                                    height: dpadDragStartOffset.height + drag.translation.height
+                                                )
+                                            }
+                                        default:
+                                            break
+                                        }
+                                    }
+                                    .onEnded { _ in
+                                        dpadDragActive = false
+                                    }
+                            )
+                    }
 
                     Spacer()
 
