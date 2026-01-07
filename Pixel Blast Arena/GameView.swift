@@ -116,8 +116,8 @@ struct GameView: View {
                             .allowsHitTesting(didDoubleTapBomb || showBombHint)
                             .contentShape(Rectangle())
                             .gesture(
-                                LongPressGesture(minimumDuration: 1.0)
-                                    .sequenced(before: DragGesture())
+                                LongPressGesture(minimumDuration: 1.5)
+                                    .sequenced(before: DragGesture(minimumDistance: 0))
                                     .onChanged { value in
                                         switch value {
                                         case .first(true):
