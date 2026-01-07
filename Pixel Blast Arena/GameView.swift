@@ -20,6 +20,9 @@ struct GameView: View {
     @State private var hasShownBombHint: Bool = false
     @State private var bombHintWorkItem: DispatchWorkItem?
     @State private var didDoubleTapBomb: Bool = false
+    @State private var dpadOffset: CGSize = .zero
+    @State private var dpadDragActive: Bool = false
+    @State private var dpadDragStartOffset: CGSize = .zero
 
     @State private var scene: GameScene = {
         let s = GameScene()
@@ -103,6 +106,31 @@ struct GameView: View {
                         scene.handleMove(direction: direction)
                     }
                     .disabled(isPaused || isGameOver)
+                    .contentShape(Rectangle())
+                    .offset(dpadOffset)
+                    .highPriorityGesture(
+                        LongPressGesture(minimumDuration: 0.4).onEnded { _ in
+                            // Enable drag mode only when bomb button is hidden
+                            if didDoubleTapBomb || showBombHint {
+                                dpadDragActive = true
+                                dpadDragStartOffset = dpadOffset
+                            }
+                        }
+                    )
+                    .gesture(
+                        DragGesture()
+                            .onChanged { value in
+                                if dpadDragActive && (didDoubleTapBomb || showBombHint) {
+                                    dpadOffset = CGSize(
+                                        width: dpadDragStartOffset.width + value.translation.width,
+                                        height: dpadDragStartOffset.height + value.translation.height
+                                    )
+                                }
+                            }
+                            .onEnded { _ in
+                                dpadDragActive = false
+                            }
+                    )
 
                     Spacer()
 
