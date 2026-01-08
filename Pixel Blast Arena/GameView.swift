@@ -138,10 +138,33 @@ struct GameView: View {
                                 .preference(key: DPadFramePreferenceKey.self, value: geo.frame(in: .named("GameViewSpace")))
                         }
                     )
+                    .overlay(alignment: .center) {
+                        ZStack {
+                            if isDPadRepositionMode {
+                                Circle()
+                                    .strokeBorder(Color.white.opacity(0.9), lineWidth: 2)
+                                    .background(Circle().fill(Color.white.opacity(0.15)))
+                                    .frame(width: 60, height: 60)
+                                    .transition(.opacity)
+                            }
+                        }
+                    }
+                    .simultaneousGesture(
+                        LongPressGesture(minimumDuration: 1.5)
+                            .onEnded { _ in
+                                if didDoubleTapBomb {
+                                    isDPadRepositionMode = true
+#if canImport(UIKit)
+                                    let generator = UIImpactFeedbackGenerator(style: .light)
+                                    generator.impactOccurred()
+#endif
+                                }
+                            }
+                    )
 
                     Spacer()
 
-                    if !(didDoubleTapBomb || showBombHint) {
+                    if !didDoubleTapBomb {
                         Button {
                             if !hasShownBombHint {
                                 hasShownBombHint = true
@@ -457,6 +480,12 @@ struct DPadView: View {
                 .fill(Color.black.opacity(0.2))
         )
         .padding(.leading)
+        .overlay(alignment: .center) {
+            ZStack {
+                // No internal state variables here, so no conditional overlay changes needed.
+            }
+            .allowsHitTesting(false)
+        }
     }
 
     @ViewBuilder private func dpadButton(system: String) -> some View {
