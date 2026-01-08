@@ -64,6 +64,7 @@ final class GameScene: SKScene {
     var onHUDUpdate: ((Int, Int) -> Void)?
     var onGameOver: ((Bool) -> Void)?
     var onPowerupCollected: ((PowerupType) -> Void)?
+    var onHomeIsCloseAnnounce: (() -> Void)?
     var onCheatActivated: (() -> Void)?
     var onPortalHint: (() -> Void)?
     var onInvinciblePassthroughAnnounce: (() -> Void)?
@@ -1172,6 +1173,10 @@ final class GameScene: SKScene {
     }
 
     private func nextLevel() {
+        if level >= 15 {
+            gameOver(youWin: true)
+            return
+        }
         level += 1
         // Keep maxConcurrentBombs as-is; reset current placed bombs handled in restart()
         restart()
@@ -1218,6 +1223,7 @@ final class GameScene: SKScene {
         buildMap()
         spawnPlayer()
         spawnEnemies(count: enemiesCountForCurrentLevel())
+        if level == 10 { onHomeIsCloseAnnounce?() }
         onHUDUpdate?(enemies.count, level)
         updateCamera()
     }

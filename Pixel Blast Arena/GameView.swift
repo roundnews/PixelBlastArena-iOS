@@ -31,6 +31,9 @@ struct GameView: View {
     @State private var dpadDragActivationWorkItem: DispatchWorkItem?
     @State private var dpadCurrentDragTranslation: CGSize = .zero
 
+    @State private var showHomeIsClose: Bool = false
+    @State private var homeIsCloseWorkItem: DispatchWorkItem?
+
     @State private var scene: GameScene = {
         let s = GameScene()
         s.scaleMode = .resizeFill
@@ -259,6 +262,23 @@ struct GameView: View {
                 .transition(.opacity.combined(with: .scale))
             }
 
+            if showHomeIsClose {
+                VStack {
+                    Spacer()
+                    Text("Home is close!")
+                        .font(.title3).bold()
+                        .foregroundStyle(.white)
+                        .padding(.vertical, 12)
+                        .padding(.horizontal, 16)
+                        .background(Color.black.opacity(0.4))
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .shadow(radius: 6)
+                    Spacer()
+                }
+                .allowsHitTesting(false)
+                .transition(.opacity.combined(with: .scale))
+            }
+
             if powerupSecondsRemaining > 0 {
                 VStack {
                     Spacer()
@@ -303,6 +323,9 @@ struct GameView: View {
                     self.showBombHint = false
                     self.hasShownBombHint = false
                     self.didDoubleTapBomb = false
+                    self.homeIsCloseWorkItem?.cancel()
+                    self.homeIsCloseWorkItem = nil
+                    self.showHomeIsClose = false
                     isPaused = false
                     isGameOver = false
                 })
@@ -329,6 +352,9 @@ struct GameView: View {
                     self.showBombHint = false
                     self.hasShownBombHint = false
                     self.didDoubleTapBomb = false
+                    self.homeIsCloseWorkItem?.cancel()
+                    self.homeIsCloseWorkItem = nil
+                    self.showHomeIsClose = false
                     isPaused = false
                     isGameOver = false
                 })
@@ -414,6 +440,17 @@ struct GameView: View {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
                 }
             }
+            scene.onHomeIsCloseAnnounce = {
+                DispatchQueue.main.async {
+                    self.homeIsCloseWorkItem?.cancel()
+                    self.showHomeIsClose = true
+                    let work = DispatchWorkItem {
+                        self.showHomeIsClose = false
+                    }
+                    self.homeIsCloseWorkItem = work
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
+                }
+            }
             // Initialize HUD state
             self.enemiesLeft = scene.enemiesCount
             self.level = scene.level
@@ -437,6 +474,9 @@ struct GameView: View {
             bombHintWorkItem = nil
             showBombHint = false
             didDoubleTapBomb = false
+            homeIsCloseWorkItem?.cancel()
+            homeIsCloseWorkItem = nil
+            showHomeIsClose = false
         }
     }
 
