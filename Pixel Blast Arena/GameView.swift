@@ -60,6 +60,23 @@ struct GameView: View {
                         }
                     }
                 )
+                .overlay(
+                    SingleTapCatcher { point in
+                        if isDPadRepositionMode {
+                            // Move D-pad so its center goes to the tapped point
+                            let currentCenter = CGPoint(x: dpadFrame.midX, y: dpadFrame.midY)
+                            let dx = point.x - currentCenter.x
+                            let dy = point.y - currentCenter.y
+                            dpadOffset = CGSize(width: dpadOffset.width + dx, height: dpadOffset.height + dy)
+                            isDPadRepositionMode = false
+#if canImport(UIKit)
+                            let generator = UIImpactFeedbackGenerator(style: .light)
+                            generator.impactOccurred()
+#endif
+                        }
+                    }
+                    .allowsHitTesting(isDPadRepositionMode)
+                )
                 .background(Color.black)
                 .ignoresSafeArea()
 
@@ -293,21 +310,6 @@ struct GameView: View {
                     isGameOver = false
                 })
             }
-            SingleTapCatcher { point in
-                if isDPadRepositionMode {
-                    // Move D-pad so its center goes to the tapped point
-                    let currentCenter = CGPoint(x: dpadFrame.midX, y: dpadFrame.midY)
-                    let dx = point.x - currentCenter.x
-                    let dy = point.y - currentCenter.y
-                    dpadOffset = CGSize(width: dpadOffset.width + dx, height: dpadOffset.height + dy)
-                    isDPadRepositionMode = false
-#if canImport(UIKit)
-                    let generator = UIImpactFeedbackGenerator(style: .light)
-                    generator.impactOccurred()
-#endif
-                }
-            }
-            .allowsHitTesting(isDPadRepositionMode)
         }
         .background(Color.black)
         .ignoresSafeArea()
@@ -532,7 +534,7 @@ private struct SingleTapCatcher: UIViewRepresentable {
         view.backgroundColor = .clear
         let recognizer = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTap(_:)))
         recognizer.numberOfTapsRequired = 1
-        recognizer.cancelsTouchesInView = true
+        recognizer.cancelsTouchesInView = false
         view.addGestureRecognizer(recognizer)
         return view
     }
