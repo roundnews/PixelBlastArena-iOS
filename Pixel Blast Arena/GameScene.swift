@@ -152,6 +152,14 @@ final class GameScene: SKScene {
         let l = max(1, min(level, 5))
         return CGFloat(l - 1) / 4.0
     }
+    
+    private func powerupSpawnProbability() -> Double {
+        // Level 1: ~33%, scale linearly to 100% by level 5
+        let base = 1.0 / 3.0
+        let l = max(1, min(level, 5))
+        let increment = (1.0 - base) / 4.0
+        return base + Double(l - 1) * increment
+    }
 
     private func renderTiles() {
         guard let map = tileMap else { return }
@@ -518,8 +526,8 @@ final class GameScene: SKScene {
             if tileMap.tileAt(col: gp.col, row: gp.row).type == .crate {
                 tileMap.setTile(type: .empty, at: gp)
                 refreshTile(at: gp.col, row: gp.row)
-                // 33% chance to spawn a powerup on destroyed crate
-                if Int.random(in: 0..<3) == 0 {
+                // Level-based chance to spawn a powerup on destroyed crate
+                if Double.random(in: 0...1) < powerupSpawnProbability() {
                     spawnPowerup(at: gp)
                 }
             }
