@@ -66,6 +66,7 @@ final class GameScene: SKScene {
     var onPowerupCollected: ((PowerupType) -> Void)?
     var onCheatActivated: (() -> Void)?
     var onPortalHint: (() -> Void)?
+    var onInvinciblePassthroughAnnounce: (() -> Void)?
 
     // Timing
     private var lastUpdateTime: TimeInterval = 0
@@ -1198,6 +1199,18 @@ final class GameScene: SKScene {
         isPaused = false
         isGamePaused = false
         onPauseChanged?(false)
+        // Level 5+: permanent invincibility and pass-through with announcement
+        if level >= 5 {
+            isInvincible = true
+            activePowerup = .passThrough
+            pendingPassThroughExpiry = false
+            onInvinciblePassthroughAnnounce?()
+        } else {
+            // Defaults for lower levels
+            isInvincible = false
+            if activePowerup == .passThrough { activePowerup = nil }
+            pendingPassThroughExpiry = false
+        }
         enemies.removeAll()
         enemyNodes.forEach { $0.removeFromParent() }
         enemyNodes.removeAll()

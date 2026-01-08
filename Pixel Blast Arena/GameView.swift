@@ -451,11 +451,14 @@ struct GameView: View {
     }
 
     private func powerupDuration(for type: PowerupType) -> Int {
+        // Scale timed powerups: base 15s at level 1, +30s per level until level 5
+        let clampedLevel = max(1, min(level, 5))
+        let duration = 15 + (clampedLevel - 1) * 30
         switch type {
-        case .powerBomb, .speedIncrease, .speedDecrease, .passThrough:
-            return 10
         case .moreBombs:
             return 0
+        case .powerBomb, .speedIncrease, .speedDecrease, .passThrough:
+            return duration
         }
     }
 }
