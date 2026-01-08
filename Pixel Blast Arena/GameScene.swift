@@ -443,6 +443,7 @@ final class GameScene: SKScene {
         let gp = player.gridPosition
         // Enforce max concurrent bombs
         if currentBombsCount >= maxConcurrentBombs { return }
+        if !tileMap.canPlaceBomb(at: gp) { return }
         let bomb = Bomb(position: gp)
         tileMap.place(bomb: bomb)
         currentBombsCount += 1
