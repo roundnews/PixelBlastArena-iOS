@@ -1042,8 +1042,39 @@ final class GameScene: SKScene {
         monsterUpFrames.removeAll()
         monsterDownFrames.removeAll()
 
-        func slice4(from baseName: String) -> [SKTexture] {
+        func slice4WithMargins(from baseName: String, topMarginPx: CGFloat, bottomMarginPx: CGFloat) -> [SKTexture] {
             var frames: [SKTexture] = []
+            #if canImport(UIKit)
+            if let img = UIImage(named: baseName) {
+                let pixelHeight = img.size.height * img.scale
+                let topFrac = max(0, min(1, topMarginPx / pixelHeight))
+                let bottomFrac = max(0, min(1, bottomMarginPx / pixelHeight))
+                let frameHeight = max(0, 1 - topFrac - bottomFrac)
+                let baseTex = SKTexture(imageNamed: baseName)
+                if baseTex.size() != .zero {
+                    baseTex.filteringMode = .nearest
+                    for i in 0..<4 {
+                        let x = CGFloat(i) * 0.25
+                        let rect = CGRect(x: x, y: bottomFrac, width: 0.25, height: frameHeight)
+                        let tex = SKTexture(rect: rect, in: baseTex)
+                        tex.filteringMode = .nearest
+                        frames.append(tex)
+                    }
+                }
+            } else {
+                let baseTex = SKTexture(imageNamed: baseName)
+                if baseTex.size() != .zero {
+                    baseTex.filteringMode = .nearest
+                    for i in 0..<4 {
+                        let x = CGFloat(i) * 0.25
+                        let rect = CGRect(x: x, y: 0.0, width: 0.25, height: 1.0)
+                        let tex = SKTexture(rect: rect, in: baseTex)
+                        tex.filteringMode = .nearest
+                        frames.append(tex)
+                    }
+                }
+            }
+            #else
             let baseTex = SKTexture(imageNamed: baseName)
             if baseTex.size() != .zero {
                 baseTex.filteringMode = .nearest
@@ -1055,14 +1086,15 @@ final class GameScene: SKScene {
                     frames.append(tex)
                 }
             }
+            #endif
             return frames
         }
 
         // Load right/left frames and up/down frames for monsters
-        let rightStrip = slice4(from: "monster-left-right")
+        let rightStrip = slice4WithMargins(from: "monster-left-right", topMarginPx: 350, bottomMarginPx: 350)
         if !rightStrip.isEmpty { monsterRightFrames = rightStrip }
 
-        let upDownStrip = slice4(from: "monster-up-down")
+        let upDownStrip = slice4WithMargins(from: "monster-up-down", topMarginPx: 350, bottomMarginPx: 350)
         if upDownStrip.count == 4 {
             monsterUpFrames = Array(upDownStrip[0...1])
             monsterDownFrames = Array(upDownStrip[2...3])

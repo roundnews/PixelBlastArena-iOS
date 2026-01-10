@@ -30,6 +30,7 @@ struct GameView: View {
     @State private var dpadDragStartOffset: CGSize = .zero
     @State private var dpadDragActivationWorkItem: DispatchWorkItem?
     @State private var dpadCurrentDragTranslation: CGSize = .zero
+    @State private var spriteFrame: CGRect = .zero
 
     @State private var showHomeIsClose: Bool = false
     @State private var homeIsCloseWorkItem: DispatchWorkItem?
@@ -68,8 +69,9 @@ struct GameView: View {
                         if isDPadRepositionMode {
                             // Move D-pad so its center goes to the tapped point
                             let currentCenter = CGPoint(x: dpadFrame.midX, y: dpadFrame.midY)
-                            let dx = point.x - currentCenter.x
-                            let dy = point.y - currentCenter.y
+                            let tapInGameSpace = CGPoint(x: spriteFrame.minX + point.x, y: spriteFrame.minY + point.y)
+                            let dx = tapInGameSpace.x - currentCenter.x
+                            let dy = tapInGameSpace.y - currentCenter.y
                             dpadOffset = CGSize(width: dpadOffset.width + dx, height: dpadOffset.height + dy)
                             isDPadRepositionMode = false
 #if canImport(UIKit)
@@ -79,6 +81,11 @@ struct GameView: View {
                         }
                     }
                     .allowsHitTesting(isDPadRepositionMode)
+                )
+                .background(
+                    GeometryReader { geo in
+                        Color.clear.preference(key: SpriteViewFramePreferenceKey.self, value: geo.frame(in: .named("GameViewSpace")))
+                    }
                 )
                 .background(Color.black)
                 .ignoresSafeArea()
@@ -459,6 +466,9 @@ struct GameView: View {
         .onPreferenceChange(DPadFramePreferenceKey.self) { rect in
             self.dpadFrame = rect
         }
+        .onPreferenceChange(SpriteViewFramePreferenceKey.self) { rect in
+            self.spriteFrame = rect
+        }
         .onDisappear {
             powerupTimer?.invalidate()
             powerupTimer = nil
@@ -592,6 +602,12 @@ struct GameOverOverlay: View {
 
 // Preference key to capture the D-pad frame in GameView's coordinate space
 private struct DPadFramePreferenceKey: PreferenceKey {
+    static var defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) { value = nextValue() }
+}
+
+// Preference key to capture the SpriteView frame in GameView's coordinate space
+private struct SpriteViewFramePreferenceKey: PreferenceKey {
     static var defaultValue: CGRect = .zero
     static func reduce(value: inout CGRect, nextValue: () -> CGRect) { value = nextValue() }
 }
