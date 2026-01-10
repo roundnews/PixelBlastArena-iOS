@@ -15,6 +15,8 @@ struct GameView: View {
     @State private var powerupTimer: Timer?
     @State private var announcedPowerup: PowerupType?
     @State private var announcementWorkItem: DispatchWorkItem?
+    @State private var centerAnnouncementText: String?
+    @State private var centerAnnouncementWorkItem: DispatchWorkItem?
     @State private var showCheatAnnouncement: Bool = false
     @State private var cheatAnnouncementWorkItem: DispatchWorkItem?
     @State private var showPortalHint: Bool = false
@@ -219,6 +221,23 @@ struct GameView: View {
                 .allowsHitTesting(false)
                 .transition(.opacity.combined(with: .scale))
             }
+            if let text = centerAnnouncementText {
+                VStack {
+                    Spacer()
+                    Text(text)
+                        .multilineTextAlignment(.center)
+                        .font(.title3).bold()
+                        .foregroundStyle(.white)
+                        .padding(.vertical, 12)
+                        .padding(.horizontal, 16)
+                        .background(Color.black.opacity(0.4))
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .shadow(radius: 6)
+                    Spacer()
+                }
+                .allowsHitTesting(false)
+                .transition(.opacity.combined(with: .scale))
+            }
             if showCheatAnnouncement {
                 VStack {
                     Spacer()
@@ -330,6 +349,9 @@ struct GameView: View {
                     self.showBombHint = false
                     self.hasShownBombHint = false
                     self.didDoubleTapBomb = false
+                    self.centerAnnouncementWorkItem?.cancel()
+                    self.centerAnnouncementWorkItem = nil
+                    self.centerAnnouncementText = nil
                     self.homeIsCloseWorkItem?.cancel()
                     self.homeIsCloseWorkItem = nil
                     self.showHomeIsClose = false
@@ -359,6 +381,9 @@ struct GameView: View {
                     self.showBombHint = false
                     self.hasShownBombHint = false
                     self.didDoubleTapBomb = false
+                    self.centerAnnouncementWorkItem?.cancel()
+                    self.centerAnnouncementWorkItem = nil
+                    self.centerAnnouncementText = nil
                     self.homeIsCloseWorkItem?.cancel()
                     self.homeIsCloseWorkItem = nil
                     self.showHomeIsClose = false
@@ -447,14 +472,25 @@ struct GameView: View {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
                 }
             }
+            scene.onInvinciblePassthroughAnnounce = {
+                DispatchQueue.main.async {
+                    self.centerAnnouncementWorkItem?.cancel()
+                    self.centerAnnouncementText = "Invincible\nPassthrough"
+                    let work = DispatchWorkItem {
+                        self.centerAnnouncementText = nil
+                    }
+                    self.centerAnnouncementWorkItem = work
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
+                }
+            }
             scene.onHomeIsCloseAnnounce = {
                 DispatchQueue.main.async {
-                    self.homeIsCloseWorkItem?.cancel()
-                    self.showHomeIsClose = true
+                    self.centerAnnouncementWorkItem?.cancel()
+                    self.centerAnnouncementText = "Home is close!"
                     let work = DispatchWorkItem {
-                        self.showHomeIsClose = false
+                        self.centerAnnouncementText = nil
                     }
-                    self.homeIsCloseWorkItem = work
+                    self.centerAnnouncementWorkItem = work
                     DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
                 }
             }
@@ -484,6 +520,9 @@ struct GameView: View {
             bombHintWorkItem = nil
             showBombHint = false
             didDoubleTapBomb = false
+            centerAnnouncementWorkItem?.cancel()
+            centerAnnouncementWorkItem = nil
+            centerAnnouncementText = nil
             homeIsCloseWorkItem?.cancel()
             homeIsCloseWorkItem = nil
             showHomeIsClose = false
