@@ -71,6 +71,9 @@ final class GameScene: SKScene {
 
     // Timing
     private var lastUpdateTime: TimeInterval = 0
+    private var lastPlayerMoveTime: CFTimeInterval = CACurrentMediaTime()
+    private let idleStandstillDelay: CFTimeInterval = 2.0
+    private var didApplyIdleTexture: Bool = false
 
     // Cheat state
     private var isInvincible: Bool = false
@@ -309,6 +312,10 @@ final class GameScene: SKScene {
         // Apply movement immediately to avoid any action conflicts
         playerNode.removeAction(forKey: "move")
         playerNode.position = newPos
+        playerNode.removeAction(forKey: "idleFade")
+        playerNode.alpha = 1.0
+        lastPlayerMoveTime = CACurrentMediaTime()
+        didApplyIdleTexture = false
 
         // Collect powerup if present
         if let type = powerups.removeValue(forKey: target) {
@@ -372,8 +379,8 @@ final class GameScene: SKScene {
 
         // Small feedback pulse
         let pulse = SKAction.sequence([
-            SKAction.scale(to: 0.96, duration: 0.05),
-            SKAction.scale(to: 1.0, duration: 0.05)
+            SKAction.scale(by: 0.96, duration: 0.05),
+            SKAction.scale(by: 1.0 / 0.96, duration: 0.05)
         ])
         playerNode.run(pulse, withKey: "move")
     }
@@ -412,6 +419,44 @@ final class GameScene: SKScene {
                 playerNode.texture = playerDownFrames.last
             }
         }
+    }
+
+    private func applyIdleTexture() {
+        playerNode.removeAction(forKey: "walk")
+
+        // Decide the idle texture and xScale for the last direction
+        var newTexture: SKTexture?
+        var newScale: CGFloat = 1.0
+        switch lastDirection {
+        case .right:
+            newScale = 1.0
+            newTexture = playerRightFrames.last
+        case .left:
+            newScale = -1.0
+            newTexture = playerRightFrames.last
+        case .up:
+            newScale = 1.0
+            newTexture = playerUpFrames.last
+        case .down:
+            newScale = 1.0
+            newTexture = playerDownFrames.last
+        }
+
+        // Simple fade: dip alpha, swap texture, fade back up. Use a keyed action so movement can cancel it.
+        // let fadeDown = SKAction.fadeAlpha(to: 0.6, duration: 0.06)
+        let setTexture = SKAction.run { [weak self] in
+            guard let self = self else { return }
+            // If movement resumed, bail out; movePlayer() will cancel this action and restore alpha
+            if CACurrentMediaTime() - self.lastPlayerMoveTime < self.idleStandstillDelay { return }
+            self.playerNode.xScale = newScale
+            if let t = newTexture { self.playerNode.texture = t }
+        }
+        // let fadeUp = SKAction.fadeAlpha(to: 1.0, duration: 0.06)
+
+        // playerNode.run(.sequence([fadeDown, setTexture, fadeUp]), withKey: "idleFade")
+        playerNode.run(setTexture, withKey: "idleFade")
+
+        didApplyIdleTexture = true
     }
 
     private func animateEnemy(node: SKSpriteNode, direction: Direction) {
@@ -843,6 +888,11 @@ final class GameScene: SKScene {
         let dt = lastUpdateTime == 0 ? 0 : currentTime - lastUpdateTime
         lastUpdateTime = currentTime
         updateEnemies(deltaTime: dt)
+
+        // Apply idle texture after standing still for a while to avoid jitter
+        if (CACurrentMediaTime() - lastPlayerMoveTime) >= idleStandstillDelay && !didApplyIdleTexture {
+            applyIdleTexture()
+        }
     }
 
     // MARK: - Game state
