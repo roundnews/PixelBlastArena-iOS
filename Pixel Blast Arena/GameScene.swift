@@ -952,6 +952,7 @@ final class GameScene: SKScene {
     
     func startNewGame() {
         // Reset level to defaults for a brand new game
+        postIntroSpawnOverrideCount = 3
         level = 1
         restart()
     }
