@@ -25,6 +25,7 @@ final class GameScene: SKScene {
     private var enemies: [Enemy] = []
     var level: Int = 1
     var enemiesCount: Int { enemies.count }
+    var shouldStartWithIntro: Bool = true
 
     // Nodes
     private var explosionFrames: [SKTexture] = []
@@ -68,9 +69,13 @@ final class GameScene: SKScene {
     var onCheatActivated: (() -> Void)?
     var onPortalHint: (() -> Void)?
     var onInvinciblePassthroughAnnounce: (() -> Void)?
+    var onIntroStateChanged: ((Bool) -> Void)?
+    var onIntroFinished: (() -> Void)?
 
     // Timing
     private var lastUpdateTime: TimeInterval = 0
+    private var isRunningIntro: Bool = false
+    private var introBombPlaced: Bool = false
     private var lastPlayerMoveTime: CFTimeInterval = CACurrentMediaTime()
     private let idleStandstillDelay: CFTimeInterval = 2.0
     private var didApplyIdleTexture: Bool = false
@@ -104,7 +109,9 @@ final class GameScene: SKScene {
         if worldNode.parent == nil { addChild(worldNode) }
         buildMap()
         spawnPlayer()
-        spawnEnemies(count: enemiesCountForCurrentLevel())
+        if !shouldStartWithIntro {
+            spawnEnemies(count: enemiesCountForCurrentLevel())
+        }
 
         if cameraNode.parent == nil { addChild(cameraNode) }
         camera = cameraNode
@@ -124,7 +131,7 @@ final class GameScene: SKScene {
 
     // MARK: - Level-based parameters
     private func enemiesCountForCurrentLevel() -> Int {
-        return max(1, 3 + (level - 1))
+        return max(1, 1 + (level - 1))
     }
 
     private func levelSpeedMultiplier() -> CGFloat {
@@ -336,7 +343,7 @@ final class GameScene: SKScene {
             hasShownInactivePortalHint = true
             onPortalHint?()
         }
-        // Enter active portal: play entry effect then advance level
+        // Enter active portal: play entry effect then advance level (special handling during intro)
         if isPortalActive, let pPos = portalGridPosition, player.gridPosition == pPos {
             isPortalActive = false
             if let pNode = portalNode {
@@ -350,8 +357,17 @@ final class GameScene: SKScene {
                 SKAction.scale(to: 0.2, duration: 0.25),
                 SKAction.fadeOut(withDuration: 0.25)
             ])
-            playerNode.run(vanish) { [weak self] in
-                self?.nextLevel()
+            if isRunningIntro {
+                playerNode.run(vanish) { [weak self] in
+                    guard let self = self else { return }
+                    self.isRunningIntro = false
+                    self.onIntroStateChanged?(false)
+                    self.onIntroFinished?()
+                }
+            } else {
+                playerNode.run(vanish) { [weak self] in
+                    self?.nextLevel()
+                }
             }
             return
         }
@@ -724,6 +740,25 @@ final class GameScene: SKScene {
         }
     }
 
+    private func spawnEnemy(at gp: GridPoint) {
+        var e = Enemy()
+        e.gridPosition = gp
+        enemies.append(e)
+        let initialTexture = monsterDownFrames.first ?? monsterRightFrames.first
+        let node: SKSpriteNode
+        if let tex = initialTexture {
+            node = SKSpriteNode(texture: tex)
+            node.size = CGSize(width: tileSize * 1.8, height: tileSize * 1.8)
+            animateEnemy(node: node, direction: .down)
+        } else {
+            node = SKSpriteNode(color: .red, size: CGSize(width: tileSize*0.8, height: tileSize*0.8))
+        }
+        node.position = positionFor(col: gp.col, row: gp.row)
+        node.zPosition = 9
+        enemyNodes.append(node)
+        worldNode.addChild(node)
+    }
+
     private func clearNeighborCrates(around gp: GridPoint) {
         let neighbors = [
             GridPoint(col: gp.col + 1, row: gp.row),
@@ -887,7 +922,7 @@ final class GameScene: SKScene {
     override func update(_ currentTime: TimeInterval) {
         let dt = lastUpdateTime == 0 ? 0 : currentTime - lastUpdateTime
         lastUpdateTime = currentTime
-        updateEnemies(deltaTime: dt)
+        if !isRunningIntro { updateEnemies(deltaTime: dt) }
 
         // Apply idle texture after standing still for a while to avoid jitter
         if (CACurrentMediaTime() - lastPlayerMoveTime) >= idleStandstillDelay && !didApplyIdleTexture {
@@ -915,6 +950,36 @@ final class GameScene: SKScene {
         // Reset level to defaults for a brand new game
         level = 1
         restart()
+    }
+
+    func prepareForIntro() {
+        // Reset state similar to restart, but do not spawn enemies
+        self.enumerateChildNodes(withName: "gameOverLabel") { node, _ in
+            node.removeFromParent()
+        }
+        for child in self.children {
+            if let label = child as? SKLabelNode, let text = label.text?.uppercased(), (text.contains("GAME OVER") || text.contains("YOU WIN")) {
+                label.removeFromParent()
+            }
+        }
+        escapeBombPosition = nil
+        escapeWindowDeadline = 0
+        isPortalActive = false
+        portalNode = nil
+        portalGridPosition = nil
+        currentBombsCount = 0
+        isPaused = false
+        isGamePaused = false
+        onPauseChanged?(false)
+        enemies.removeAll()
+        enemyNodes.forEach { $0.removeFromParent() }
+        enemyNodes.removeAll()
+        worldNode.removeAllChildren()
+        buildMap()
+        spawnPlayer()
+        // Update HUD to reflect zero enemies for intro setup
+        onHUDUpdate?(enemies.count, level)
+        updateCamera()
     }
 
     private func computedTileSize(for viewSize: CGSize) -> CGFloat {
@@ -1019,6 +1084,177 @@ final class GameScene: SKScene {
         }
 
         updateCamera()
+    }
+
+    func startIntroSequence() {
+        // Mark intro running and notify
+        isRunningIntro = true
+        introBombPlaced = false
+        onIntroStateChanged?(true)
+
+        // Prepare a controlled scene region near bottom-left
+        // Clear local area and set a single crate and one enemy
+        let clearCols = 1...8
+        let clearRows = 1...6
+        for r in clearRows { for c in clearCols { tileMap.setTile(type: .empty, at: GridPoint(col: c, row: r)) } }
+        // Re-render cleared tiles
+        for r in clearRows { for c in clearCols { refreshTile(at: c, row: r) } }
+
+        // Ensure portal at left-bottom is placed and inactive
+        placePortalAtLeftBottom()
+
+        // Place a crate and an enemy nearby
+        let crateGP = GridPoint(col: 5, row: 2)
+        tileMap.setTile(type: .crate, at: crateGP)
+        refreshTile(at: crateGP.col, row: crateGP.row)
+
+        // Remove existing enemies and nodes in case
+        enemies.removeAll()
+        enemyNodes.forEach { $0.removeFromParent() }
+        enemyNodes.removeAll()
+        onHUDUpdate?(enemies.count, level)
+
+        spawnEnemy(at: GridPoint(col: 4, row: 4))
+        onHUDUpdate?(enemies.count, level)
+
+        // Schedule enemy to patrol near the crate until bomb is placed (avoid bomb tile at (4,2))
+        func scheduleEnemyPreBombPatrol(step: Int = 0) {
+            guard !introBombPlaced, let node = enemyNodes[safe: 0] else { return }
+            // Patrol points near the crate at (5,2), do not step on (4,2) where bomb will be placed
+            let patrol: [GridPoint] = [
+                GridPoint(col: 3, row: 2), // left of bomb
+                GridPoint(col: 3, row: 3), // up-left
+                GridPoint(col: 4, row: 3), // up of bomb
+                GridPoint(col: 3, row: 3)  // back to up-left
+            ]
+            let gp = patrol[step % patrol.count]
+            // Update model position
+            if !enemies.isEmpty {
+                var e = enemies[0]
+                e.gridPosition = gp
+                enemies[0] = e
+            }
+            let pos = positionFor(col: gp.col, row: gp.row)
+            node.run(SKAction.move(to: pos, duration: 0.22)) { [weak self] in
+                guard let self = self else { return }
+                if !self.introBombPlaced { scheduleEnemyPreBombPatrol(step: step + 1) }
+            }
+        }
+        worldNode.run(.sequence([
+            .wait(forDuration: 0.5),
+            .run { scheduleEnemyPreBombPatrol() }
+        ]), withKey: "preBombPatrolStart")
+
+        // Reset player position and appearance
+        player.gridPosition = GridPoint(col: 1, row: 1)
+        playerNode.position = positionFor(col: player.gridPosition.col, row: player.gridPosition.row)
+        playerNode.alpha = 1.0
+        playerNode.removeAllActions()
+
+        // Sequence: 0-2s look around (left/right), then stand
+        let lookLeft = SKAction.run { [weak self] in self?.animatePlayer(direction: .left) }
+        let lookRight = SKAction.run { [weak self] in self?.animatePlayer(direction: .right) }
+        let stopWalk = SKAction.run { [weak self] in self?.playerNode.removeAction(forKey: "walk") }
+
+        // Helper to move player one tile
+        func moveTo(_ gp: GridPoint) -> SKAction {
+            return SKAction.run { [weak self] in
+                self?.movePlayer(to: gp)
+            }
+        }
+
+        // Path towards crate/monster area
+        let pathMoves: [GridPoint] = [
+            GridPoint(col: 2, row: 1),
+            GridPoint(col: 3, row: 1),
+            GridPoint(col: 4, row: 1),
+            GridPoint(col: 4, row: 2)
+        ]
+        var pathActions: [SKAction] = []
+        for gp in pathMoves { pathActions.append(moveTo(gp)); pathActions.append(.wait(forDuration: 0.25)) }
+
+        // Place bomb and run away
+        let placeBomb = SKAction.run { [weak self] in
+            self?.placeBomb()
+            self?.introBombPlaced = true
+        }
+        let startEnemyBlastPatrol = SKAction.run { [weak self] in
+            guard let self = self, let node = self.enemyNodes[safe: 0] else { return }
+            // Back-and-forth between (4,2) and (3,2) to stay in blast path
+            let leftGP = GridPoint(col: 3, row: 2)
+            let bombGP = GridPoint(col: 4, row: 2)
+            let leftPos = self.positionFor(col: leftGP.col, row: leftGP.row)
+            let bombPos = self.positionFor(col: bombGP.col, row: bombGP.row)
+            let updateToBomb = SKAction.run { [weak self] in
+                guard let self = self else { return }
+                if !self.enemies.isEmpty {
+                    var e = self.enemies[0]
+                    e.gridPosition = bombGP
+                    self.enemies[0] = e
+                }
+            }
+            let moveToBomb = SKAction.move(to: bombPos, duration: 0.18)
+            let updateToLeft = SKAction.run { [weak self] in
+                guard let self = self else { return }
+                if !self.enemies.isEmpty {
+                    var e = self.enemies[0]
+                    e.gridPosition = leftGP
+                    self.enemies[0] = e
+                }
+            }
+            let moveToLeft = SKAction.move(to: leftPos, duration: 0.18)
+            let wait = SKAction.wait(forDuration: 0.12)
+            let cycle = SKAction.sequence([updateToBomb, moveToBomb, wait, updateToLeft, moveToLeft, wait])
+            node.removeAction(forKey: "preBombPatrol")
+            node.run(SKAction.repeatForever(cycle), withKey: "blastPatrol")
+        }
+        let runAwayMoves: [GridPoint] = [
+            GridPoint(col: 4, row: 1),
+            GridPoint(col: 3, row: 1),
+            GridPoint(col: 2, row: 1)
+        ]
+        var runAwayActions: [SKAction] = []
+        for gp in runAwayMoves { runAwayActions.append(moveTo(gp)); runAwayActions.append(.wait(forDuration: 0.25)) }
+
+        // Activate portal and vanish (custom, do not advance level here)
+        let activatePortal = SKAction.run { [weak self] in self?.activatePortal() }
+        let vanish = SKAction.run { [weak self] in
+            guard let self = self else { return }
+            let vanish = SKAction.group([
+                SKAction.scale(to: 0.2, duration: 0.25),
+                SKAction.fadeOut(withDuration: 0.25)
+            ])
+            self.playerNode.run(vanish)
+        }
+
+        // Finish intro: notify and allow GameView to transition
+        let finish = SKAction.run { [weak self] in
+            guard let self = self else { return }
+            self.isRunningIntro = false
+            self.onIntroStateChanged?(false)
+            self.onIntroFinished?()
+        }
+
+        // Build the full timeline
+        let sequence = SKAction.sequence([
+            lookLeft, .wait(forDuration: 0.4), lookRight, .wait(forDuration: 0.4), lookLeft, .wait(forDuration: 0.4), stopWalk,
+            .wait(forDuration: 0.8), // total ~2.0s
+            // 2-4s: walk towards area
+            .sequence(pathActions),
+            .wait(forDuration: 0.5),
+            // 4-7s: place bomb and run away; allow time for explosion
+            placeBomb, .wait(forDuration: 0.1), startEnemyBlastPatrol,
+            .sequence(runAwayActions),
+            .wait(forDuration: 2.2),
+            // Wait a bit for portal activation from enemy death
+            .wait(forDuration: 0.5),
+            // Move to portal and enter (handled in movePlayer for intro)
+            moveTo(GridPoint(col: 1, row: 1)), .wait(forDuration: 0.2),
+            moveTo(GridPoint(col: 1, row: 2)), .wait(forDuration: 0.2),
+            moveTo(GridPoint(col: 1, row: 3)), .wait(forDuration: 0.2),
+            moveTo(GridPoint(col: 1, row: 4))
+        ])
+        worldNode.run(sequence, withKey: "introSequence")
     }
 
     private func loadExplosionFrames() {

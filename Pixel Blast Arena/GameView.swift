@@ -32,6 +32,13 @@ struct GameView: View {
     @State private var dpadDragStartOffset: CGSize = .zero
     @State private var dpadDragActivationWorkItem: DispatchWorkItem?
     @State private var dpadCurrentDragTranslation: CGSize = .zero
+    @State private var controlsOpacity: Double = 1.0
+
+    @State private var hasShownIntro: Bool = false
+    @State private var isIntroRunning: Bool = false
+    @State private var hideControlsDuringIntro: Bool = true
+    @State private var overlayOpacity: Double = 0.0
+
     @State private var spriteFrame: CGRect = .zero
 
     @State private var showHomeIsClose: Bool = false
@@ -65,6 +72,11 @@ struct GameView: View {
                             scene.placeBomb()
                         }
                     }
+                )
+                .overlay(
+                    Color.black.opacity(max(0.0, overlayOpacity))
+                        .ignoresSafeArea()
+                        .animation(.easeInOut(duration: 0.6), value: overlayOpacity)
                 )
                 .overlay(
                     SingleTapCatcher { point in
@@ -137,72 +149,76 @@ struct GameView: View {
                 Spacer()
 
                 // Controls: D-pad + Bomb
-                HStack {
-                    DPadView { direction in
-                        scene.handleMove(direction: direction)
-                    }
-                    .disabled(isPaused || isGameOver)
-                    .contentShape(Rectangle())
-                    .offset(dpadOffset)
-                    .background(
-                        GeometryReader { geo in
-                            Color.clear
-                                .preference(key: DPadFramePreferenceKey.self, value: geo.frame(in: .named("GameViewSpace")))
-                        }
-                    )
-                    .overlay(alignment: .center) {
-                        ZStack {
-                            if isDPadRepositionMode {
-                                Circle()
-                                    .strokeBorder(Color.white.opacity(0.9), lineWidth: 2)
-                                    .background(Circle().fill(Color.white.opacity(0.15)))
-                                    .frame(width: 60, height: 60)
-                                    .transition(.opacity)
-                            }
-                        }
-                    }
-                    .simultaneousGesture(
-                        LongPressGesture(minimumDuration: 1.5)
-                            .onEnded { _ in
-                                if didDoubleTapBomb {
-                                    isDPadRepositionMode = true
-#if canImport(UIKit)
-                                    let generator = UIImpactFeedbackGenerator(style: .light)
-                                    generator.impactOccurred()
-#endif
-                                }
-                            }
-                    )
-
-                    Spacer()
-
-                    if !didDoubleTapBomb {
-                        Button {
-                            if !hasShownBombHint {
-                                hasShownBombHint = true
-                                bombHintWorkItem?.cancel()
-                                showBombHint = true
-                                let work = DispatchWorkItem {
-                                    self.showBombHint = false
-                                }
-                                bombHintWorkItem = work
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
-                            }
-                            scene.placeBomb()
-                        } label: {
-                            Image(systemName: "flame.fill")
-                                .font(.system(size: 28, weight: .bold))
-                                .foregroundStyle(.white)
-                                .padding(22)
-                                .background(.red)
-                                .clipShape(Circle())
-                                .shadow(radius: 6)
+                if !hideControlsDuringIntro {
+                    HStack {
+                        DPadView { direction in
+                            scene.handleMove(direction: direction)
                         }
                         .disabled(isPaused || isGameOver)
-                        .padding(.trailing)
+                        .contentShape(Rectangle())
+                        .offset(dpadOffset)
+                        .background(
+                            GeometryReader { geo in
+                                Color.clear
+                                    .preference(key: DPadFramePreferenceKey.self, value: geo.frame(in: .named("GameViewSpace")))
+                            }
+                        )
+                        .overlay(alignment: .center) {
+                            ZStack {
+                                if isDPadRepositionMode {
+                                    Circle()
+                                        .strokeBorder(Color.white.opacity(0.9), lineWidth: 2)
+                                        .background(Circle().fill(Color.white.opacity(0.15)))
+                                        .frame(width: 60, height: 60)
+                                        .transition(.opacity)
+                                }
+                            }
+                        }
+                        .simultaneousGesture(
+                            LongPressGesture(minimumDuration: 1.5)
+                                .onEnded { _ in
+                                    if didDoubleTapBomb {
+                                        isDPadRepositionMode = true
+    #if canImport(UIKit)
+                                        let generator = UIImpactFeedbackGenerator(style: .light)
+                                        generator.impactOccurred()
+    #endif
+                                    }
+                                }
+                        )
+
+                        Spacer()
+
+                        if !didDoubleTapBomb {
+                            Button {
+                                if !hasShownBombHint {
+                                    hasShownBombHint = true
+                                    bombHintWorkItem?.cancel()
+                                    showBombHint = true
+                                    let work = DispatchWorkItem {
+                                        self.showBombHint = false
+                                    }
+                                    bombHintWorkItem = work
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
+                                }
+                                scene.placeBomb()
+                            } label: {
+                                Image(systemName: "flame.fill")
+                                    .font(.system(size: 28, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .padding(22)
+                                    .background(.red)
+                                    .clipShape(Circle())
+                                    .shadow(radius: 6)
+                            }
+                            .disabled(isPaused || isGameOver)
+                            .padding(.trailing)
+                        }
                     }
+                    .padding(.bottom)
+                    .opacity(controlsOpacity)
+                    .allowsHitTesting(controlsOpacity > 0.01)
                 }
-                .padding(.bottom)
             }
 
             if let p = announcedPowerup {
@@ -494,10 +510,52 @@ struct GameView: View {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
                 }
             }
+            scene.onIntroStateChanged = { running in
+                DispatchQueue.main.async {
+                    self.isIntroRunning = running
+                    self.hideControlsDuringIntro = running
+                }
+            }
+            scene.onIntroFinished = {
+                DispatchQueue.main.async {
+                    // End intro and prepare real game
+                    self.isIntroRunning = false
+                    self.hideControlsDuringIntro = false
+                    // Fade from black to real game
+                    self.overlayOpacity = 1.0
+                    scene.restart()
+                    withAnimation(.easeInOut(duration: 1.0)) {
+                        self.overlayOpacity = 0.0
+                    }
+                    // Fade in controls over 2 seconds
+                    self.controlsOpacity = 0.0
+                    withAnimation(.easeInOut(duration: 2.0)) {
+                        self.controlsOpacity = 1.0
+                    }
+                }
+            }
             // Initialize HUD state
             self.enemiesLeft = scene.enemiesCount
             self.level = scene.level
             self.isPaused = scene.isGamePaused
+
+            // Start intro only once, then directly start game on future entries
+            if !hasShownIntro {
+                hasShownIntro = true
+                scene.shouldStartWithIntro = true
+                // Hide screen while staging intro, then run intro without spawning normal enemies
+                self.overlayOpacity = 1.0
+                scene.prepareForIntro()
+                scene.startIntroSequence()
+                scene.shouldStartWithIntro = false
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    self.overlayOpacity = 0.0
+                }
+            } else {
+                // Ensure normal game state
+                self.overlayOpacity = 0.0
+                self.hideControlsDuringIntro = false
+            }
         }
         .onPreferenceChange(DPadFramePreferenceKey.self) { rect in
             self.dpadFrame = rect
