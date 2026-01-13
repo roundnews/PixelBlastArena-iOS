@@ -88,6 +88,9 @@ final class GameScene: SKScene {
     // Ensure scene setup runs only once per scene instance
     private var didSetup: Bool = false
 
+    // One-time override for enemy count right after intro
+    var postIntroSpawnOverrideCount: Int? = nil
+
     // MARK: - Scene lifecycle
     override func didMove(to view: SKView) {
         // Prevent double-initialization if the same scene instance is presented again
@@ -362,6 +365,7 @@ final class GameScene: SKScene {
                     guard let self = self else { return }
                     self.isRunningIntro = false
                     self.onIntroStateChanged?(false)
+                    self.postIntroSpawnOverrideCount = 3
                     self.onIntroFinished?()
                 }
             } else {
@@ -1540,7 +1544,14 @@ final class GameScene: SKScene {
         worldNode.removeAllChildren()
         buildMap()
         spawnPlayer()
-        spawnEnemies(count: enemiesCountForCurrentLevel())
+        let spawnCount: Int
+        if level == 1, let override = postIntroSpawnOverrideCount {
+            spawnCount = override
+            postIntroSpawnOverrideCount = nil // consume override
+        } else {
+            spawnCount = enemiesCountForCurrentLevel()
+        }
+        spawnEnemies(count: spawnCount)
         if level == 10 { onHomeIsCloseAnnounce?() }
         onHUDUpdate?(enemies.count, level)
         updateCamera()
