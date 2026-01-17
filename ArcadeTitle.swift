@@ -18,24 +18,24 @@ struct ArcadeTitle: View {
         ZStack {
             // 1) Big dark outline (bottom-most)
             Text(text)
-                .font(.system(size: 64, weight: .heavy, design: .rounded))
+                .font(.system(size: GameConstants.titleFontSize, weight: .heavy, design: .rounded))
                 .foregroundStyle(Color.black.opacity(0.85))
                 .offset(x: 0, y: 6)
                 .blur(radius: 0.2)
 
             // 2) Colored fill (middle)
             Text(text)
-                .font(.system(size: 64, weight: .heavy, design: .rounded))
+                .font(.system(size: GameConstants.titleFontSize, weight: .heavy, design: .rounded))
                 .foregroundStyle(fillGradient(for: fill))
                 .shadow(color: fill.opacity(0.35), radius: 6, x: 0, y: 0) // subtle glow
 
             // 3) Bright highlight stroke / glow (top-most)
             Text(text)
-                .font(.system(size: 64, weight: .heavy, design: .rounded))
+                .font(.system(size: GameConstants.titleFontSize, weight: .heavy, design: .rounded))
                 .foregroundStyle(.clear)
                 .overlay(
                     Text(text)
-                        .font(.system(size: 64, weight: .heavy, design: .rounded))
+                        .font(.system(size: GameConstants.titleFontSize, weight: .heavy, design: .rounded))
                         .foregroundStyle(highlight.opacity(0.95))
                         .shadow(color: highlight.opacity(0.7), radius: 2, x: 0, y: 0)
                         .shadow(color: highlight.opacity(0.5), radius: 3, x: 0, y: 0)
@@ -45,7 +45,7 @@ struct ArcadeTitle: View {
 
             // 4) Drop shadow for depth
             Text(text)
-                .font(.system(size: 64, weight: .heavy, design: .rounded))
+                .font(.system(size: GameConstants.titleFontSize, weight: .heavy, design: .rounded))
                 .foregroundStyle(.clear)
                 .shadow(color: .black.opacity(0.35), radius: 6, x: 0, y: 6)
         }

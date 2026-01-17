@@ -10,9 +10,9 @@ enum PowerupType: CaseIterable, Equatable {
 }
 final class GameScene: SKScene {
     // Grid/world
-    private let cols = 26
-    private let rows = 22
-    private var tileSize: CGFloat = 32
+    private let cols = GameConstants.gridColumns
+    private let rows = GameConstants.gridRows
+    private var tileSize: CGFloat = GameConstants.defaultTileSize
     private let worldNode = SKNode()
 
     // Camera
@@ -249,7 +249,7 @@ final class GameScene: SKScene {
         player.gridPosition = GridPoint(col: 1, row: 1)
         let initialTexture = playerDownFrames.first ?? playerRightFrames.first
         playerNode = SKSpriteNode(texture: initialTexture)
-        playerNode.size = CGSize(width: tileSize * 1.4, height: tileSize * 1.4)
+        playerNode.size = CGSize(width: tileSize * GameConstants.playerSizeMultiplier, height: tileSize * GameConstants.playerSizeMultiplier)
         playerNode.position = positionFor(col: player.gridPosition.col, row: player.gridPosition.row)
         playerNode.zPosition = 10
         playerNode.xScale = 1.0
@@ -525,7 +525,7 @@ final class GameScene: SKScene {
 
         let tex = SKTexture(imageNamed: "bomb")
         tex.filteringMode = .nearest
-        let bombNode = SKSpriteNode(texture: tex, size: CGSize(width: tileSize * 1.7, height: tileSize * 1.7))
+        let bombNode = SKSpriteNode(texture: tex, size: CGSize(width: tileSize * GameConstants.bombSizeMultiplier, height: tileSize * GameConstants.bombSizeMultiplier))
         bombNode.position = positionFor(col: gp.col, row: gp.row)
         bombNode.zPosition = 5
         bombNode.name = "bomb_\(gp.col)_\(gp.row)"
@@ -567,7 +567,7 @@ final class GameScene: SKScene {
                     // Cancel its countdown and detonate shortly for visual chain effect
                     chainedNode.removeAllActions()
                     let chainedBomb = Bomb(position: gp)
-                    let delay = SKAction.wait(forDuration: 0.08)
+                    let delay = SKAction.wait(forDuration: GameConstants.chainExplosionDelay)
                     chainedNode.run(.sequence([delay, .run { [weak self] in
                         guard let self = self else { return }
                         // Skip if already exploded
@@ -1008,7 +1008,7 @@ final class GameScene: SKScene {
         renderTiles()
 
         // Re-add player
-        playerNode.size = CGSize(width: tileSize * 1.4, height: tileSize * 1.4)
+        playerNode.size = CGSize(width: tileSize * GameConstants.playerSizeMultiplier, height: tileSize * GameConstants.playerSizeMultiplier)
         playerNode.position = positionFor(col: player.gridPosition.col, row: player.gridPosition.row)
         playerNode.zPosition = 10
         worldNode.addChild(playerNode)
@@ -1140,7 +1140,7 @@ final class GameScene: SKScene {
                 enemies[0] = e
             }
             let pos = positionFor(col: gp.col, row: gp.row)
-            node.run(SKAction.move(to: pos, duration: 0.22)) { [weak self] in
+            node.run(SKAction.move(to: pos, duration: GameConstants.moveDuration)) { [weak self] in
                 guard let self = self else { return }
                 if !self.introBombPlaced { scheduleEnemyPreBombPatrol(step: step + 1) }
             }
@@ -1561,7 +1561,7 @@ final class GameScene: SKScene {
     private func applyPowerup(_ type: PowerupType) {
         switch type {
         case .moreBombs:
-            if maxConcurrentBombs < 5 { maxConcurrentBombs += 1 }
+            if maxConcurrentBombs < GameConstants.maxConcurrentBombs { maxConcurrentBombs += 1 }
             // Do not set activePowerup for permanent effect
         case .passThrough:
             activePowerup = .passThrough
