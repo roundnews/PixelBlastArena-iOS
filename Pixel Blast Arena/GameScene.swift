@@ -553,8 +553,12 @@ final class GameScene: SKScene {
 
     private func explode(bomb: Bomb, bombNode: SKSpriteNode) {
         bombNode.removeFromParent()
-        tileMap.removeBomb(at: bomb.position)
-        currentBombsCount = max(0, currentBombsCount - 1)
+        // Only remove from tilemap and decrement count if bomb still exists
+        // (it may have already been removed during chain reaction scheduling)
+        if tileMap.hasBomb(at: bomb.position) {
+            tileMap.removeBomb(at: bomb.position)
+            currentBombsCount = max(0, currentBombsCount - 1)
+        }
 
         // SFX: bomb explode
         AudioManager.shared.playSFX(named: "bomb-explode")
@@ -567,11 +571,14 @@ final class GameScene: SKScene {
                     // Cancel its countdown and detonate shortly for visual chain effect
                     chainedNode.removeAllActions()
                     let chainedBomb = Bomb(position: gp)
+                    
+                    // Remove bomb from tilemap IMMEDIATELY to prevent race condition
+                    tileMap.removeBomb(at: gp)
+                    currentBombsCount = max(0, currentBombsCount - 1)
+                    
                     let delay = SKAction.wait(forDuration: 0.08)
                     chainedNode.run(.sequence([delay, .run { [weak self] in
                         guard let self = self else { return }
-                        // Skip if already exploded
-                        if !self.tileMap.hasBomb(at: chainedBomb.position) { return }
                         self.explode(bomb: chainedBomb, bombNode: chainedNode)
                     }]))
                 } else {
