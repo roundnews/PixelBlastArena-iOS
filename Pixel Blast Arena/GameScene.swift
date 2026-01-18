@@ -72,6 +72,8 @@ final class GameScene: SKScene {
     var onIntroStateChanged: ((Bool) -> Void)?
     var onIntroFinished: (() -> Void)?
 
+    var onMainCharacterStartedIntroMove: (() -> Void)?
+
     // Timing
     private var lastUpdateTime: TimeInterval = 0
     private var isRunningIntro: Bool = false
@@ -1182,7 +1184,14 @@ final class GameScene: SKScene {
             GridPoint(col: 4, row: 2)
         ]
         var pathActions: [SKAction] = []
-        for gp in pathMoves { pathActions.append(moveTo(gp)); pathActions.append(.wait(forDuration: 0.25)) }
+        for (index, gp) in pathMoves.enumerated() {
+            pathActions.append(moveTo(gp))
+            if index == 0 {
+                // After first move, insert the new run action to call the callback
+                pathActions.append(.run { [weak self] in self?.onMainCharacterStartedIntroMove?() })
+            }
+            pathActions.append(.wait(forDuration: 0.25))
+        }
 
         // Place bomb and run away
         let placeBomb = SKAction.run { [weak self] in

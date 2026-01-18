@@ -44,6 +44,8 @@ struct GameView: View {
     @State private var showHomeIsClose: Bool = false
     @State private var homeIsCloseWorkItem: DispatchWorkItem?
 
+    @State private var introMessagesPlayed: Bool = false
+
     @State private var scene: GameScene = {
         let s = GameScene()
         s.scaleMode = .resizeFill
@@ -534,6 +536,15 @@ struct GameView: View {
                     }
                 }
             }
+            // New callback for main character started intro move to trigger overlayed intro messages once
+            scene.onMainCharacterStartedIntroMove = {
+                DispatchQueue.main.async {
+                    if !self.introMessagesPlayed {
+                        self.introMessagesPlayed = true
+                        self.playOverlayedIntroMessages()
+                    }
+                }
+            }
             // Initialize HUD state
             self.enemiesLeft = scene.enemiesCount
             self.level = scene.level
@@ -585,6 +596,39 @@ struct GameView: View {
             homeIsCloseWorkItem = nil
             showHomeIsClose = false
         }
+    }
+
+    private func playOverlayedIntroMessages() {
+        centerAnnouncementWorkItem?.cancel()
+        centerAnnouncementWorkItem = nil
+        centerAnnouncementText = nil
+
+        let messages = [
+            "Welcome to Pixel Blast Arena!",
+            "Use the D-pad to move your character.",
+            "Defeat all enemies to unlock the portal.",
+            "Beware of hidden traps and powerups!"
+        ]
+
+        var currentIndex = 0
+
+        func showNextMessage() {
+            guard currentIndex < messages.count else {
+                centerAnnouncementText = nil
+                centerAnnouncementWorkItem = nil
+                return
+            }
+            centerAnnouncementText = messages[currentIndex]
+            currentIndex += 1
+
+            let work = DispatchWorkItem {
+                showNextMessage()
+            }
+            centerAnnouncementWorkItem = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
+        }
+
+        showNextMessage()
     }
 
     private func powerupTitle(for type: PowerupType) -> String {
