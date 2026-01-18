@@ -292,22 +292,28 @@ final class GameScene: SKScene {
         onCheatActivated?()
     }
 
+    private func canMoveWithPassThrough(to target: GridPoint) -> Bool {
+        guard activePowerup == .passThrough || isInvincible else { return false }
+        guard tileMap.inBounds(col: target.col, row: target.row) else { return false }
+        let tileType = tileMap.tileAt(col: target.col, row: target.row).type
+        return tileType != .wall && !tileMap.hasBomb(at: target)
+    }
+
+    private func canEscapeFromBomb(to target: GridPoint) -> Bool {
+        guard let escapePos = escapeBombPosition,
+              escapePos == player.gridPosition,
+              CACurrentMediaTime() < escapeWindowDeadline else {
+            return false
+        }
+        let destType = tileMap.tileAt(col: target.col, row: target.row).type
+        return destType == .empty && !tileMap.hasBomb(at: target)
+    }
+
     private func movePlayer(to target: GridPoint) {
         // Primary rule: normal walkability check allowing stepping off a placed bomb
         var canMove = tileMap.isWalkableForPlayer(from: player.gridPosition, to: target)
-        if !canMove, (activePowerup == .passThrough || isInvincible) {
-            // Allow movement onto crates while pass-through is active (but not walls or bombs)
-            if tileMap.inBounds(col: target.col, row: target.row) {
-                let t = tileMap.tileAt(col: target.col, row: target.row).type
-                if t != .wall && !tileMap.hasBomb(at: target) { canMove = true }
-            }
-        }
-        if !canMove, let escapePos = escapeBombPosition, escapePos == player.gridPosition, CACurrentMediaTime() < escapeWindowDeadline {
-            // During the brief escape window, allow moving off the bomb tile as long as destination is empty and not a wall
-            let destType = tileMap.tileAt(col: target.col, row: target.row).type
-            let destHasBomb = tileMap.hasBomb(at: target)
-            if destType == .empty && !destHasBomb { canMove = true }
-        }
+        if !canMove { canMove = canMoveWithPassThrough(to: target) }
+        if !canMove { canMove = canEscapeFromBomb(to: target) }
 
         guard canMove else { return }
 
